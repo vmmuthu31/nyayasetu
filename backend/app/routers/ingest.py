@@ -125,6 +125,7 @@ async def _run_ingestion_pipeline(
             ambiguity_reason=plan.ambiguity_reason,
             highlight_coords=highlight_coords,
             page_number=page_number,
+            limitation_days=plan.limitation_days,
         )
         db.add(d)
 

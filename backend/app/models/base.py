@@ -101,6 +101,9 @@ class Directive(Base):
     is_ambiguous = Column(Boolean, default=False)
     ambiguity_reason = Column(String)
 
+    # Appeal limitation period (days remaining at time of ingestion)
+    limitation_days = Column(Integer)
+
     status = Column(Enum(CaseStatus), default=CaseStatus.PENDING_REVIEW)
     reviewed_by = Column(String)
     reviewed_at = Column(DateTime)
