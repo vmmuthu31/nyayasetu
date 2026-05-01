@@ -15,9 +15,20 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       ...(init.headers ?? {}),
     },
   });
+
+  if (res.status === 401) {
+    // Token expired — clear session and redirect to login
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("ns_token");
+      localStorage.removeItem("ns_user");
+      window.location.href = "/login";
+    }
+    throw new Error("Session expired. Please log in again.");
+  }
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail ?? "Request failed");
+    throw new Error(err.detail ?? `Request failed (${res.status})`);
   }
   return res.json();
 }

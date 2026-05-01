@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ShieldCheck, ShieldAlert, RefreshCw, ChevronRight } from "lucide-react";
 import { api, AuditEntry } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -74,9 +74,8 @@ export default function AuditPage() {
             ) : logs.length === 0 ? (
               <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-400">No audit logs yet</td></tr>
             ) : logs.map((log) => (
-              <>
+              <React.Fragment key={log.id}>
                 <tr
-                  key={log.id}
                   className="hover:bg-slate-50 cursor-pointer"
                   onClick={() => setExpanded(expanded === log.id ? null : log.id)}
                 >
@@ -98,7 +97,7 @@ export default function AuditPage() {
                   </td>
                 </tr>
                 {expanded === log.id && (
-                  <tr key={`${log.id}-detail`} className="bg-slate-50">
+                  <tr className="bg-slate-50">
                     <td colSpan={6} className="px-6 py-4">
                       <div className="font-mono text-xs text-slate-600 space-y-1">
                         <p><span className="text-slate-400">hash:</span> {log.hash}</p>
@@ -110,7 +109,7 @@ export default function AuditPage() {
                     </td>
                   </tr>
                 )}
-              </>
+              </React.Fragment>
             ))}
           </tbody>
         </table>

@@ -80,7 +80,10 @@ async def review_directive(
     )
     db.add(action)
 
-    # Update parent case status if all directives reviewed
+    # Flush so the current directive's new status is visible within this session
+    await db.flush()
+
+    # Update parent case status if all directives are now reviewed
     all_directives_result = await db.execute(
         select(Directive).where(Directive.case_id == directive.case_id)
     )
@@ -91,8 +94,8 @@ async def review_directive(
         case_result = await db.execute(select(Case).where(Case.id == directive.case_id))
         case = case_result.scalar_one_or_none()
         if case:
-            verified = [d for d in all_dirs if d.status == CaseStatus.VERIFIED]
-            case.status = CaseStatus.VERIFIED if verified else CaseStatus.REJECTED
+            verified_count = sum(1 for d in all_dirs if d.status == CaseStatus.VERIFIED)
+            case.status = CaseStatus.VERIFIED if verified_count > 0 else CaseStatus.REJECTED
 
     await append_audit_log(
         db,

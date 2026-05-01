@@ -1,16 +1,14 @@
-import uuid
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, case as sql_case, outerjoin
 
 from app.core.database import get_db
-from app.models.base import Case, Directive, CaseAction, CaseStatus, ActionType, User
+from app.models.base import Case, Directive, CaseStatus, User
 from app.routers.deps import get_current_user
-from app.services.audit import append_audit_log
 from app.services.ingestion import storage
 
 router = APIRouter(prefix="/cases", tags=["cases"])
@@ -72,33 +70,44 @@ async def list_cases(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    q = select(Case).order_by(desc(Case.filed_at))
+    # Single query: cases LEFT JOIN directive count — no N+1
+    directive_count_subq = (
+        select(Directive.case_id, func.count(Directive.id).label("cnt"))
+        .group_by(Directive.case_id)
+        .subquery()
+    )
+
+    q = (
+        select(Case, func.coalesce(directive_count_subq.c.cnt, 0).label("directive_count"))
+        .outerjoin(directive_count_subq, Case.id == directive_count_subq.c.case_id)
+        .order_by(desc(Case.filed_at))
+    )
+
     if status:
         q = q.where(Case.status == status)
     if search:
-        q = q.where(Case.case_number.ilike(f"%{search}%") | Case.petitioners.ilike(f"%{search}%"))
-    q = q.offset(offset).limit(limit)
-
-    result = await db.execute(q)
-    cases = result.scalars().all()
-
-    out = []
-    for case in cases:
-        dir_count_result = await db.execute(
-            select(func.count()).where(Directive.case_id == case.id)
+        q = q.where(
+            Case.case_number.ilike(f"%{search}%") | Case.petitioners.ilike(f"%{search}%")
         )
-        out.append(CaseListItem(
-            id=case.id,
-            case_number=case.case_number,
-            court=case.court,
-            petitioners=case.petitioners,
-            status=case.status,
-            confidence_score=case.confidence_score,
-            filed_at=case.filed_at,
-            judgment_date=case.judgment_date,
-            directive_count=dir_count_result.scalar() or 0,
-        ))
-    return out
+
+    q = q.offset(offset).limit(limit)
+    result = await db.execute(q)
+    rows = result.all()
+
+    return [
+        CaseListItem(
+            id=row.Case.id,
+            case_number=row.Case.case_number,
+            court=row.Case.court,
+            petitioners=row.Case.petitioners,
+            status=row.Case.status,
+            confidence_score=row.Case.confidence_score,
+            filed_at=row.Case.filed_at,
+            judgment_date=row.Case.judgment_date,
+            directive_count=row.directive_count,
+        )
+        for row in rows
+    ]
 
 
 @router.get("/stats")
@@ -106,31 +115,50 @@ async def get_stats(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    counts = {}
-    for status in CaseStatus:
-        result = await db.execute(
-            select(func.count()).where(Case.status == status)
-        )
-        counts[status.value] = result.scalar() or 0
+    # Single query for all status counts using conditional aggregation
+    count_q = select(
+        func.count(Case.id).filter(Case.status == CaseStatus.PENDING_REVIEW).label("pending"),
+        func.count(Case.id).filter(Case.status == CaseStatus.VERIFIED).label("verified"),
+        func.count(Case.id).filter(Case.status == CaseStatus.ACTIONED).label("actioned"),
+        func.count(Case.id).filter(Case.status == CaseStatus.APPEALED).label("appealed"),
+        func.count(Case.id).filter(Case.status == CaseStatus.REJECTED).label("rejected"),
+    )
+    count_result = await db.execute(count_q)
+    row = count_result.one()
 
-    # Upcoming deadlines (next 60 days)
+    counts = {
+        "PENDING_REVIEW": row.pending,
+        "VERIFIED": row.verified,
+        "ACTIONED": row.actioned,
+        "APPEALED": row.appealed,
+        "REJECTED": row.rejected,
+    }
+
+    # Upcoming deadlines — join in single query
     now = datetime.utcnow()
     deadline_result = await db.execute(
-        select(Directive, Case)
+        select(
+            Directive.department,
+            Directive.deadline,
+            Directive.case_id,
+            Case.case_number,
+        )
         .join(Case, Directive.case_id == Case.id)
         .where(Directive.deadline >= now)
         .where(Directive.status == CaseStatus.PENDING_REVIEW)
         .order_by(Directive.deadline.asc())
         .limit(5)
     )
-    upcoming = []
-    for directive, case in deadline_result:
-        upcoming.append({
-            "case_number": case.case_number,
-            "department": directive.department,
-            "deadline": directive.deadline.isoformat() if directive.deadline else None,
-            "case_id": case.id,
-        })
+
+    upcoming = [
+        {
+            "case_number": row.case_number,
+            "department": row.department,
+            "deadline": row.deadline.isoformat() if row.deadline else None,
+            "case_id": row.case_id,
+        }
+        for row in deadline_result.all()
+    ]
 
     return {"status_counts": counts, "upcoming_deadlines": upcoming}
 
@@ -146,7 +174,9 @@ async def get_case(
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    dir_result = await db.execute(select(Directive).where(Directive.case_id == case_id))
+    dir_result = await db.execute(
+        select(Directive).where(Directive.case_id == case_id).order_by(Directive.created_at.asc())
+    )
     directives = dir_result.scalars().all()
 
     return CaseOut(
