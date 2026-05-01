@@ -19,6 +19,14 @@ class Settings(BaseSettings):
 
     frontend_url: str = "http://localhost:3000"
 
+    # CCMS Integration
+    ccms_webhook_secret: str = "change-me-ccms-secret"
+
+    # Appeal limitation periods (days) — per Indian procedural law
+    appeal_limitation_days_hc: int = 90   # High Court orders
+    appeal_limitation_days_sc: int = 90   # SLP to Supreme Court
+    comply_default_days: int = 30
+
     class Config:
         env_file = ".env"
 

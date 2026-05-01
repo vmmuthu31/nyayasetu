@@ -10,11 +10,23 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 
+"""
+Limitation periods under Indian law:
+- Comply orders: typically 30–90 days as stated in judgment
+- Appeal (Letters Patent / Intra-court): 30 days from order date
+- SLP to Supreme Court: 90 days from High Court order
+- Condonation of delay can be sought after expiry
+"""
 DEFAULT_DEADLINES = {
-    "COMPLY": 30,   # days
-    "APPEAL": 90,
+    "COMPLY": 30,
+    "APPEAL": 90,   # 90-day SLP window; 30-day intra-court appeal
     "INFORM": 30,
     "MONITOR": 90,
+}
+
+LIMITATION_NOTICE_DAYS = {
+    "APPEAL": 90,   # Hard legal deadline — must flag urgently
+    "COMPLY": None,  # Varies by judgment
 }
 
 DEADLINE_PATTERNS = [
@@ -37,6 +49,7 @@ class ActionPlan:
     fingerprint: str
     is_ambiguous: bool
     ambiguity_reason: str
+    limitation_days: int | None = None   # Days remaining in appeal window
 
 
 def _extract_deadline_days(text: str) -> int | None:
@@ -82,6 +95,11 @@ def generate_action_plans(
 
         fingerprint = hashlib.sha256(text.encode()).hexdigest()
 
+        # Compute limitation days remaining for APPEAL directives
+        limitation_days = None
+        if action_type == "APPEAL" and deadline:
+            limitation_days = (deadline - datetime.utcnow()).days
+
         plans.append(ActionPlan(
             directive_text=text,
             action_type=action_type,
@@ -92,6 +110,7 @@ def generate_action_plans(
             fingerprint=fingerprint,
             is_ambiguous=is_ambiguous,
             ambiguity_reason=ambiguity_reason,
+            limitation_days=limitation_days,
         ))
 
     return plans
