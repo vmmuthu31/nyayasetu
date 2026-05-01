@@ -28,7 +28,7 @@ export function StatusChart({ counts }: { counts: Record<string, number> }) {
             <Cell key={entry.key} fill={STATUS_COLORS[entry.key] ?? "#94a3b8"} />
           ))}
         </Pie>
-        <Tooltip formatter={(v: number) => [v, "Cases"]} />
+        <Tooltip formatter={(v) => [v, "Cases"]} />
         <Legend iconType="circle" iconSize={10} />
       </PieChart>
     </ResponsiveContainer>
