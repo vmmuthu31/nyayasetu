@@ -3,16 +3,17 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard, FileText, Upload, ShieldCheck, LogOut, Scale, ClipboardList,
+  LayoutDashboard, FileText, Upload, LogOut, Scale, ClipboardList, Building2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 
 const NAV = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/cases",     label: "Cases",     icon: FileText },
-  { href: "/upload",    label: "Ingest PDF", icon: Upload },
-  { href: "/audit",     label: "Audit Trail", icon: ClipboardList },
+  { href: "/dashboard",   label: "Dashboard",    icon: LayoutDashboard },
+  { href: "/cases",       label: "Cases",        icon: FileText },
+  { href: "/departments", label: "Dept. Actions",icon: Building2 },
+  { href: "/upload",      label: "Ingest PDF",   icon: Upload },
+  { href: "/audit",       label: "Audit Trail",  icon: ClipboardList },
 ];
 
 export function Sidebar() {

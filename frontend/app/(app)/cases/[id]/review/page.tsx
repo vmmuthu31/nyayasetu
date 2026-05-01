@@ -227,6 +227,28 @@ export default function ReviewPage() {
             </div>
 
             <div className="flex-1 px-5 py-4 space-y-4">
+              {/* Appeal Limitation Period Warning */}
+              {selected.action_type === "APPEAL" && selected.limitation_days !== undefined && selected.limitation_days !== null && (
+                <div className={cn(
+                  "rounded-lg px-3 py-2.5 text-xs flex items-start gap-2",
+                  selected.limitation_days <= 15
+                    ? "bg-red-50 border border-red-300 text-red-800"
+                    : selected.limitation_days <= 45
+                    ? "bg-amber-50 border border-amber-300 text-amber-800"
+                    : "bg-blue-50 border border-blue-200 text-blue-800"
+                )}>
+                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold">Appeal Limitation Period</p>
+                    <p>
+                      {selected.limitation_days <= 0
+                        ? "EXPIRED — condonation of delay required"
+                        : `${selected.limitation_days} days remaining (90-day SLP window)`}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Action Type */}
               <FormField label="Action Type" icon={Tag}>
                 {editing ? (
