@@ -4,12 +4,13 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   CheckCircle, XCircle, Edit2, ChevronLeft, AlertTriangle,
-  Calendar, Building2, Tag, FileText, User, ShieldCheck,
+  Calendar, Building2, Tag, FileText, User, ShieldCheck, FileImage,
 } from "lucide-react";
 import { api, CaseDetail, Directive } from "@/lib/api";
 import { Badge } from "@/components/ui/Badge";
-import { formatDate, cn } from "@/lib/utils";
+import { formatDate, cn, daysUntil } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
+import { PdfHighlightViewer } from "@/components/verification/PdfHighlightViewer";
 
 export default function ReviewPage() {
   const { id } = useParams<{ id: string }>();
@@ -24,6 +25,8 @@ export default function ReviewPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"text" | "pdf">("text");
 
   useEffect(() => {
     api.cases.get(id).then((c) => {
@@ -31,6 +34,8 @@ export default function ReviewPage() {
       const first = c.directives.find((d) => d.status === "PENDING_REVIEW") ?? c.directives[0];
       if (first) { setSelected(first); setEditForm(first); }
       setLoading(false);
+      // Fetch presigned PDF URL
+      api.cases.pdfUrl(id).then((r) => setPdfUrl(r.url)).catch(() => null);
     });
   }, [id]);
 
@@ -138,40 +143,67 @@ export default function ReviewPage() {
           </ul>
         </div>
 
-        {/* Center: Judgment Text Viewer */}
-        <div className="flex-1 overflow-y-auto bg-slate-50 p-5">
-          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-            <div className="flex items-center gap-2 mb-4">
-              <FileText className="w-4 h-4 text-slate-400" />
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Directive Text</p>
-            </div>
-            {selected ? (
-              <>
-                {selected.is_ambiguous && (
-                  <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-sm text-amber-800">
-                    <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                    <span><strong>Ambiguous:</strong> {selected.ambiguity_reason || "Human review required"}</span>
-                  </div>
-                )}
-                <div className="bg-yellow-50 border-l-4 border-yellow-400 rounded-r-lg p-4 text-sm text-slate-800 leading-relaxed font-serif">
-                  {selected.text}
-                </div>
-                {selected.page_number && (
-                  <p className="text-xs text-slate-400 mt-2">Page {selected.page_number}</p>
-                )}
-
-                {/* Case metadata */}
-                <div className="mt-6 grid grid-cols-2 gap-3 text-sm">
-                  <InfoRow icon={Building2} label="Court" value={caseData.court} />
-                  <InfoRow icon={User} label="Petitioners" value={caseData.petitioners} />
-                  <InfoRow icon={User} label="Respondents" value={caseData.respondents} />
-                  <InfoRow icon={Calendar} label="Judgment Date" value={formatDate(caseData.judgment_date)} />
-                </div>
-              </>
-            ) : (
-              <p className="text-slate-400 text-sm">Select a directive from the list</p>
-            )}
+        {/* Center: Source-Highlighted Viewer */}
+        <div className="flex-1 overflow-y-auto bg-slate-50 p-5 space-y-4">
+          {/* Tab toggle: Text view vs PDF view */}
+          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-1 w-fit">
+            <button
+              onClick={() => setViewMode("text")}
+              className={cn("flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md font-medium transition-colors",
+                viewMode === "text" ? "bg-slate-800 text-white" : "text-slate-500 hover:text-slate-700")}
+            >
+              <FileText className="w-3.5 h-3.5" /> Extracted Text
+            </button>
+            <button
+              onClick={() => setViewMode("pdf")}
+              className={cn("flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md font-medium transition-colors",
+                viewMode === "pdf" ? "bg-slate-800 text-white" : "text-slate-500 hover:text-slate-700")}
+            >
+              <FileImage className="w-3.5 h-3.5" /> PDF Source
+            </button>
           </div>
+
+          {viewMode === "text" ? (
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+              {selected ? (
+                <>
+                  {selected.is_ambiguous && (
+                    <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-sm text-amber-800">
+                      <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                      <span><strong>Ambiguous:</strong> {selected.ambiguity_reason || "Human review required"}</span>
+                    </div>
+                  )}
+                  {/* Extracted directive text with source highlight styling */}
+                  <div className="bg-yellow-50 border-l-4 border-yellow-400 rounded-r-lg p-4 text-sm text-slate-800 leading-relaxed font-serif">
+                    {selected.text}
+                  </div>
+                  {selected.page_number && (
+                    <p className="text-xs text-slate-400 mt-2">
+                      Extracted from page {selected.page_number}
+                      {selected.highlight_coords?.length ? ` · ${selected.highlight_coords.length} source region(s) located in PDF` : ""}
+                    </p>
+                  )}
+                  {/* Case metadata */}
+                  <div className="mt-6 grid grid-cols-2 gap-3 text-sm">
+                    <InfoRow icon={Building2} label="Court" value={caseData.court} />
+                    <InfoRow icon={User} label="Petitioners" value={caseData.petitioners} />
+                    <InfoRow icon={User} label="Respondents" value={caseData.respondents} />
+                    <InfoRow icon={Calendar} label="Judgment Date" value={formatDate(caseData.judgment_date)} />
+                  </div>
+                </>
+              ) : (
+                <p className="text-slate-400 text-sm">Select a directive from the list</p>
+              )}
+            </div>
+          ) : (
+            /* PDF viewer with real bounding-box highlights from PyMuPDF */
+            <PdfHighlightViewer
+              pdfUrl={pdfUrl}
+              highlights={(selected?.highlight_coords as Array<{ page: number; x0: number; y0: number; x1: number; y1: number; page_width: number; page_height: number }>) ?? []}
+              activePage={selected?.page_number ?? 1}
+              className="h-[520px]"
+            />
+          )}
         </div>
 
         {/* Right: Action Form */}

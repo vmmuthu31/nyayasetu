@@ -129,6 +129,16 @@ export interface CaseListItem {
   directive_count: number;
 }
 
+export interface HighlightCoord {
+  page: number;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  page_width: number;
+  page_height: number;
+}
+
 export interface Directive {
   id: string;
   text: string;
@@ -140,6 +150,8 @@ export interface Directive {
   ambiguity_reason?: string;
   status: string;
   page_number?: number;
+  highlight_coords?: HighlightCoord[];    // Real PyMuPDF bounding boxes
+  limitation_days?: number;               // Days until appeal deadline expires
 }
 
 export interface CaseDetail {

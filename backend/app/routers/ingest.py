@@ -10,7 +10,7 @@ from app.models.base import Case, Directive, CaseStatus, ActionType, User
 from app.routers.deps import get_current_user
 from app.services.audit import append_audit_log
 from app.services.ingestion import storage
-from app.services.ingestion.pdf_extractor import extract_pdf
+from app.services.ingestion.pdf_extractor import extract_pdf, find_highlight_coords
 from app.services.chunking.legal_chunker import extract_directives
 from app.services.llm.extractor import extract_case_entities
 from app.services.action_plan.generator import generate_action_plans
@@ -93,8 +93,14 @@ async def ingest_pdf(
     db.add(case)
     await db.flush()
 
-    # Step 7: Persist directives
+    # Step 7: Persist directives — with real PDF highlight coordinates
     for plan in action_plans:
+        # Find where in the PDF this directive text actually appears
+        highlight_coords = find_highlight_coords(plan.directive_text, extraction.all_spans)
+
+        # Determine which page this directive is on
+        page_number = highlight_coords[0]["page"] if highlight_coords else None
+
         d = Directive(
             case_id=case.id,
             text=plan.directive_text,
@@ -105,6 +111,8 @@ async def ingest_pdf(
             fingerprint=plan.fingerprint,
             is_ambiguous=plan.is_ambiguous,
             ambiguity_reason=plan.ambiguity_reason,
+            highlight_coords=highlight_coords,   # Real PDF bbox coordinates
+            page_number=page_number,
         )
         db.add(d)
 
