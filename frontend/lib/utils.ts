@@ -14,7 +14,8 @@ export function formatDate(date: Date | string | null): string {
   });
 }
 
-export function daysUntil(date: Date | string): number {
+export function daysUntil(date: Date | string | null | undefined): number | null {
+  if (!date) return null;
   const now = new Date();
   const target = new Date(date);
   return Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));

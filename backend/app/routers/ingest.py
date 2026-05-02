@@ -121,7 +121,7 @@ async def _run_ingestion_pipeline(
             action_type=ActionType(plan.action_type),
             department=plan.department,
             deadline=plan.deadline,
-            deadline_text=plan.deadline_text if hasattr(plan, "deadline_text") else None,
+            deadline_text=plan.deadline_text,
             confidence_score=plan.confidence_score,
             fingerprint=plan.fingerprint,
             is_ambiguous=plan.is_ambiguous,

@@ -20,8 +20,8 @@ export function DeadlinesList({ deadlines }: { deadlines: DeadlineItem[] }) {
     <ul className="space-y-3">
       {deadlines.map((d, i) => {
         const days = daysUntil(d.deadline);
-        const urgent = days <= 7;
-        const warning = days <= 30;
+        const urgent = days !== null && days <= 7;
+        const warning = days !== null && days <= 30;
         return (
           <li key={i} className="flex items-start justify-between gap-2 py-2 border-b border-slate-100 last:border-0">
             <div>
@@ -36,7 +36,7 @@ export function DeadlinesList({ deadlines }: { deadlines: DeadlineItem[] }) {
                 "text-xs font-semibold",
                 urgent ? "text-red-600" : warning ? "text-amber-600" : "text-emerald-600"
               )}>
-                {days <= 0 ? "Overdue" : `${days} days left`}
+                {days === null ? "—" : days <= 0 ? "Overdue" : `${days} days left`}
               </span>
             </div>
           </li>

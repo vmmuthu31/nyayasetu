@@ -50,6 +50,7 @@ class ActionPlan:
     is_ambiguous: bool
     ambiguity_reason: str
     limitation_days: int | None = None   # Days remaining in appeal window
+    deadline_text: str | None = None     # Verbatim deadline phrase from judgment
 
 
 def _extract_deadline_days(text: str) -> int | None:
@@ -76,12 +77,18 @@ def generate_action_plans(
 
         # Timeline engine
         days = _extract_deadline_days(text)
+        deadline_text: str | None = d.get("deadline_text") or None
         if days is not None:
             deadline = base_date + timedelta(days=days)
             deadline_source = "extracted"
+            # Build a human-readable phrase if not already provided
+            if not deadline_text:
+                deadline_text = f"within {days} days"
         elif d.get("deadline_days"):
             deadline = base_date + timedelta(days=int(d["deadline_days"]))
             deadline_source = "extracted"
+            if not deadline_text:
+                deadline_text = f"within {d['deadline_days']} days"
         else:
             default_days = DEFAULT_DEADLINES.get(action_type, 30)
             deadline = base_date + timedelta(days=default_days)
@@ -111,6 +118,7 @@ def generate_action_plans(
             is_ambiguous=is_ambiguous,
             ambiguity_reason=ambiguity_reason,
             limitation_days=limitation_days,
+            deadline_text=deadline_text,
         ))
 
     return plans
