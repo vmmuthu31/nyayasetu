@@ -96,6 +96,12 @@ export const api = {
     },
     verify: () => request<{ valid: boolean; broken_at_sequence?: number; total_records?: number }>("/audit/verify"),
   },
+
+  departments: {
+    summary: () => request<DeptSummary[]>("/departments/summary"),
+    actions: (department: string) =>
+      request<DeptAction[]>(`/departments/actions?department=${encodeURIComponent(department)}`),
+  },
 };
 
 // Types
@@ -203,4 +209,25 @@ export interface DirectiveUpdate {
   department?: string;
   deadline?: string;
   notes?: string;
+}
+
+export interface DeptSummary {
+  department: string;
+  total: number;
+  by_action: { COMPLY: number; APPEAL: number; INFORM: number; MONITOR: number };
+  earliest_deadline: string | null;
+  days_until_deadline: number | null;
+}
+
+export interface DeptAction {
+  directive_id: string;
+  case_id: string;
+  case_number: string;
+  court: string;
+  judgment_date: string | null;
+  directive_text: string;
+  action_type: string;
+  department: string;
+  deadline: string | null;
+  confidence_score: number;
 }
