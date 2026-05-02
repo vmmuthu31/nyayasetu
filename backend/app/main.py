@@ -15,9 +15,15 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
         # Safe column additions — idempotent, won't fail if column already exists
         for sql in [
+            # users
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS mobile VARCHAR",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS office_unit VARCHAR",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS state VARCHAR",
+            # cases
+            "ALTER TABLE cases ADD COLUMN IF NOT EXISTS page_count INTEGER DEFAULT 0",
+            "ALTER TABLE cases ADD COLUMN IF NOT EXISTS received_at TIMESTAMP",
+            # directives
+            "ALTER TABLE directives ADD COLUMN IF NOT EXISTS deadline_text VARCHAR",
         ]:
             await conn.execute(__import__("sqlalchemy").text(sql))
     yield

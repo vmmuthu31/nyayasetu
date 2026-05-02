@@ -99,11 +99,13 @@ async def _run_ingestion_pipeline(
         petitioners=llm_result.petitioners,
         respondents=llm_result.respondents,
         judgment_date=judgment_date,
+        received_at=datetime.utcnow(),             # Received = ingestion time
         status=CaseStatus.PENDING_REVIEW,
         pdf_storage_key=storage_key,
-        extracted_text=extraction.full_text[:50000],  # Truncate for DB column
+        extracted_text=extraction.full_text[:50000],
         confidence_score=round(avg_confidence, 3),
         fingerprint=extraction.fingerprint,
+        page_count=len(extraction.pages),          # Real page count from PyMuPDF
     )
     db.add(case)
     await db.flush()  # Get case.id without committing
@@ -119,6 +121,7 @@ async def _run_ingestion_pipeline(
             action_type=ActionType(plan.action_type),
             department=plan.department,
             deadline=plan.deadline,
+            deadline_text=plan.deadline_text if hasattr(plan, "deadline_text") else None,
             confidence_score=plan.confidence_score,
             fingerprint=plan.fingerprint,
             is_ambiguous=plan.is_ambiguous,

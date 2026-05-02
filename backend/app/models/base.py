@@ -75,6 +75,8 @@ class Case(Base):
 
     confidence_score = Column(Float, default=0.0)
     fingerprint = Column(String)
+    page_count = Column(Integer, default=0)        # Total pages in PDF
+    received_at = Column(DateTime)                  # Date judgment was received/filed
 
     actions = relationship("CaseAction", back_populates="case")
     audit_logs = relationship("AuditLog", back_populates="case")
@@ -98,6 +100,7 @@ class Directive(Base):
     action_type = Column(Enum(ActionType), nullable=False)
     department = Column(String, nullable=False)
     deadline = Column(DateTime)
+    deadline_text = Column(String)                  # Exact phrase e.g. "within 8 weeks"
     confidence_score = Column(Float, default=0.0)
     fingerprint = Column(String, nullable=False)
 

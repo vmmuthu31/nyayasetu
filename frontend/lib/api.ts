@@ -56,6 +56,7 @@ export const api = {
     get: (id: string) => request<CaseDetail>(`/cases/${id}`),
     stats: () => request<StatsResponse>(`/cases/stats`),
     pdfUrl: (id: string) => request<{ url: string }>(`/cases/${id}/pdf-url`),
+    exportActionPlan: (id: string) => `${BASE}/cases/${id}/export/action-plan`,
   },
 
   ingest: {
@@ -154,6 +155,7 @@ export interface Directive {
   action_type: string;
   department: string;
   deadline: string | null;
+  deadline_text?: string | null;          // Exact phrase e.g. "within 8 weeks"
   confidence_score: number;
   is_ambiguous: boolean;
   ambiguity_reason?: string;
@@ -163,6 +165,18 @@ export interface Directive {
   limitation_days?: number;               // Days until appeal deadline expires
 }
 
+export interface ActionPlanSummary {
+  total_directives: number;
+  verified_count: number;
+  pending_count: number;
+  rejected_count: number;
+  comply_count: number;
+  appeal_count: number;
+  inform_count: number;
+  monitor_count: number;
+  to_departments: number;
+}
+
 export interface CaseDetail {
   id: string;
   case_number: string;
@@ -170,10 +184,13 @@ export interface CaseDetail {
   petitioners: string;
   respondents: string;
   judgment_date: string | null;
+  received_at: string | null;             // When judgment was received
   filed_at: string;
   status: string;
   confidence_score: number;
+  page_count: number;                     // Total PDF pages
   directives: Directive[];
+  summary: ActionPlanSummary | null;      // Computed breakdown
 }
 
 export interface StatsResponse {

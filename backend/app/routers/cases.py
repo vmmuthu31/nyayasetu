@@ -20,6 +20,7 @@ class DirectiveOut(BaseModel):
     action_type: str
     department: str
     deadline: datetime | None
+    deadline_text: str | None = None              # Exact phrase e.g. "within 8 weeks"
     confidence_score: float
     is_ambiguous: bool
     ambiguity_reason: str | None
@@ -32,6 +33,18 @@ class DirectiveOut(BaseModel):
         from_attributes = True
 
 
+class ActionPlanSummary(BaseModel):
+    total_directives: int
+    verified_count: int
+    pending_count: int
+    rejected_count: int
+    comply_count: int
+    appeal_count: int
+    inform_count: int
+    monitor_count: int
+    to_departments: int                            # Unique departments
+
+
 class CaseOut(BaseModel):
     id: str
     case_number: str
@@ -39,10 +52,13 @@ class CaseOut(BaseModel):
     petitioners: str
     respondents: str
     judgment_date: datetime | None
+    received_at: datetime | None = None           # When judgment was received
     filed_at: datetime
     status: str
     confidence_score: float
+    page_count: int = 0                           # Total PDF pages
     directives: list[DirectiveOut] = []
+    summary: ActionPlanSummary | None = None      # Computed breakdown
 
     class Config:
         from_attributes = True
@@ -181,6 +197,21 @@ async def get_case(
     )
     directives = dir_result.scalars().all()
 
+    directive_outs = [DirectiveOut.model_validate(d) for d in directives]
+
+    # Compute action plan summary
+    summary = ActionPlanSummary(
+        total_directives=len(directives),
+        verified_count=sum(1 for d in directives if d.status == CaseStatus.VERIFIED),
+        pending_count=sum(1 for d in directives if d.status == CaseStatus.PENDING_REVIEW),
+        rejected_count=sum(1 for d in directives if d.status == CaseStatus.REJECTED),
+        comply_count=sum(1 for d in directives if str(d.action_type) == "COMPLY"),
+        appeal_count=sum(1 for d in directives if str(d.action_type) == "APPEAL"),
+        inform_count=sum(1 for d in directives if str(d.action_type) == "INFORM"),
+        monitor_count=sum(1 for d in directives if str(d.action_type) == "MONITOR"),
+        to_departments=len({d.department for d in directives if d.department}),
+    )
+
     return CaseOut(
         id=case.id,
         case_number=case.case_number,
@@ -188,10 +219,13 @@ async def get_case(
         petitioners=case.petitioners,
         respondents=case.respondents,
         judgment_date=case.judgment_date,
+        received_at=case.received_at,
         filed_at=case.filed_at,
         status=case.status,
         confidence_score=case.confidence_score,
-        directives=[DirectiveOut.model_validate(d) for d in directives],
+        page_count=case.page_count or 0,
+        directives=directive_outs,
+        summary=summary,
     )
 
 
@@ -207,3 +241,54 @@ async def get_pdf_url(
         raise HTTPException(status_code=404, detail="PDF not found")
     url = storage.get_presigned_url(case.pdf_storage_key)
     return {"url": url}
+
+
+@router.get("/{case_id}/export/action-plan")
+async def export_action_plan(
+    case_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Export verified action plan as structured JSON (ready for PDF rendering or CSV)."""
+    result = await db.execute(select(Case).where(Case.id == case_id))
+    case = result.scalar_one_or_none()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    dir_result = await db.execute(
+        select(Directive)
+        .where(Directive.case_id == case_id)
+        .where(Directive.status == CaseStatus.VERIFIED)
+        .order_by(Directive.created_at.asc())
+    )
+    verified_directives = dir_result.scalars().all()
+
+    from fastapi.responses import JSONResponse
+    export = {
+        "exported_at": datetime.utcnow().isoformat(),
+        "case": {
+            "case_number": case.case_number,
+            "court": case.court,
+            "petitioners": case.petitioners,
+            "respondents": case.respondents,
+            "judgment_date": case.judgment_date.isoformat() if case.judgment_date else None,
+            "received_at": case.received_at.isoformat() if case.received_at else None,
+        },
+        "verified_directives": [
+            {
+                "serial": i + 1,
+                "text": d.text,
+                "action_type": d.action_type,
+                "department": d.department,
+                "deadline": d.deadline.isoformat() if d.deadline else None,
+                "deadline_text": d.deadline_text,
+                "limitation_days": d.limitation_days,
+                "confidence_score": d.confidence_score,
+            }
+            for i, d in enumerate(verified_directives)
+        ],
+        "total_verified": len(verified_directives),
+    }
+    return JSONResponse(content=export, headers={
+        "Content-Disposition": f"attachment; filename=action-plan-{case.case_number}.json"
+    })
