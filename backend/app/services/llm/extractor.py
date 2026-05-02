@@ -12,7 +12,7 @@ from app.core.config import settings
 
 client = Groq(api_key=settings.groq_api_key)
 
-SYSTEM_PROMPT = """You are a strict legal information extraction engine for the Karnataka High Court case management system (NyayaSetu).
+SYSTEM_PROMPT = """You are a strict legal information extraction engine for NyayaSetu — an AI-powered court judgment intelligence system used across all Indian High Courts and judicial bodies.
 
 Your role is NOT to interpret, summarize, or infer.
 Your ONLY task is to extract explicitly stated information from the provided judgment text and return structured JSON.
@@ -66,7 +66,7 @@ Remember:
 This system is used in a judicial workflow. Incorrect extraction is worse than missing data.
 Be precise. Be conservative. Be literal."""
 
-EXTRACTION_PROMPT = """Analyze the following Karnataka High Court judgment text and extract structured data.
+EXTRACTION_PROMPT = """Analyze the following Indian court judgment text and extract structured data.
 
 Follow ALL instructions strictly.
 
@@ -212,7 +212,7 @@ def extract_case_entities(text: str, max_chars: int = 12000) -> ExtractedCase:
 
     return ExtractedCase(
         case_number=data.get("case_number") or "UNKNOWN",
-        court=data.get("court") or "Karnataka High Court",
+        court=data.get("court") or "High Court of India",
         petitioners=data.get("petitioners") or "",
         respondents=data.get("respondents") or "",
         judgment_date=data.get("judgment_date"),

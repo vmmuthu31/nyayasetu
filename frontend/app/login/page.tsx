@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import {
-  Shield, Eye, EyeOff, LogIn,
+  Eye, EyeOff, LogIn,
   ShieldCheck, Brain, LockKeyhole, Lock, Mail,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
@@ -43,9 +44,7 @@ export default function LoginPage() {
         <div className="relative z-10 flex flex-col h-full p-12 xl:p-16">
           {/* Logo */}
           <div className="flex items-center gap-3 mb-auto pb-16">
-            <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center shadow-lg">
-              <Shield className="w-5 h-5 text-white" />
-            </div>
+            <Image src="/logo.png" alt="NyayaSetu" width={44} height={44} className="rounded-xl" />
             <div>
               <h1 className="text-lg font-bold">NyayaSetu</h1>
               <p className="text-[10px] text-slate-400 uppercase tracking-widest">
@@ -64,9 +63,9 @@ export default function LoginPage() {
               <span className="text-indigo-400">Action Plans.</span>
             </h2>
             <p className="text-slate-300 text-lg leading-relaxed max-w-md mb-14">
-              NyayaSetu uses AI to extract directives from High Court judgments,
-              routes them to the right department, and creates an immutable
-              compliance trail.
+              NyayaSetu serves every High Court jurisdiction across India —
+              extracting directives, routing them to the right department, and
+              building an immutable compliance trail automatically.
             </p>
 
             {/* Features */}
@@ -92,7 +91,7 @@ export default function LoginPage() {
           {/* Footer */}
           <div className="mt-auto pt-12 border-t border-slate-800">
             <p className="text-xs text-slate-500">
-              Karnataka High Court Case Management System · NyayaSetu v1.0
+              Indian High Court Case Management System · NyayaSetu v1.0
             </p>
           </div>
         </div>
@@ -102,9 +101,7 @@ export default function LoginPage() {
       <div className="flex-1 flex flex-col items-center justify-center bg-[#f8fafc] px-6 py-12">
         {/* Mobile logo */}
         <div className="flex items-center gap-2 mb-10 lg:hidden">
-          <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center">
-            <Shield className="w-5 h-5 text-white" />
-          </div>
+          <Image src="/logo.png" alt="NyayaSetu" width={36} height={36} className="rounded-xl" />
           <span className="text-lg font-bold text-slate-900">NyayaSetu</span>
         </div>
 

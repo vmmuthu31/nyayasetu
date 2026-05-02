@@ -1,17 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import {
   ShieldCheck, Brain, LockKeyhole,
   User, Mail, Phone, Briefcase, Building2, Lock,
   Eye, EyeOff, CheckCircle2, UserPlus, Shield,
-  Users, LayoutDashboard, Crown,
+  Users, LayoutDashboard, Crown, MapPin,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 
-/* ─── Constants ─────────────────────────────────────────── */
+/* ─── Static Data ─────────────────────────────────────────── */
 
 const ROLES = [
   {
@@ -37,34 +38,103 @@ const ROLES = [
   },
 ];
 
-const DEPARTMENTS = [
-  "Labour Department", "Education Department", "Revenue Department",
-  "Health Department", "Rural Development", "Urban Development",
-  "Public Works Department", "Finance Department", "Home Department",
-  "Agriculture Department", "Law Department", "General Administration",
+// All 28 states + 8 UTs of India
+const INDIAN_STATES = [
+  "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
+  "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka",
+  "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram",
+  "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu",
+  "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal",
+  // Union Territories
+  "Andaman & Nicobar Islands", "Chandigarh",
+  "Dadra & Nagar Haveli and Daman & Diu", "Delhi (NCT)",
+  "Jammu & Kashmir", "Ladakh", "Lakshadweep", "Puducherry",
 ];
 
-/* ─── Helpers ────────────────────────────────────────────── */
+// Broad government departments — applicable across any Indian High Court jurisdiction
+const DEPARTMENTS = [
+  // Core Administration
+  "General Administration Department",
+  "Home Department",
+  "Finance Department",
+  "Law & Justice Department",
+  "Personnel & Administrative Reforms",
+  "Cabinet Affairs",
+  // Social Sectors
+  "Education Department",
+  "Health & Family Welfare Department",
+  "Women & Child Development",
+  "Social Welfare Department",
+  "Labour & Employment Department",
+  "Tribal Welfare Department",
+  // Infrastructure
+  "Public Works Department (PWD)",
+  "Urban Development Department",
+  "Rural Development & Panchayati Raj",
+  "Housing Department",
+  "Transport Department",
+  "Energy Department",
+  "Water Resources Department",
+  "Irrigation Department",
+  "Ports & Fisheries Department",
+  // Economic
+  "Revenue Department",
+  "Agriculture & Farmers Welfare",
+  "Animal Husbandry & Dairying",
+  "Industries & Commerce Department",
+  "MSME Department",
+  "Tourism Department",
+  "Food & Civil Supplies",
+  "Horticulture Department",
+  "Forest & Environment Department",
+  "Mines & Geology Department",
+  // Judicial / Legal
+  "Directorate of Prosecution",
+  "Lokayukta / Vigilance Department",
+  "Stamps & Registration Department",
+  "Excise Department",
+  "Police Department",
+  "Fire & Emergency Services",
+  "Prison Department",
+  // Technology
+  "IT & e-Governance Department",
+  "Science & Technology Department",
+  "Space Applications Centre",
+  // Other
+  "Planning Department",
+  "Statistics Department",
+  "Public Relations Department",
+  "NRI Affairs Department",
+  "Skill Development Department",
+  "Sports & Youth Affairs",
+  "Cultural Affairs Department",
+  "Other / Not Listed",
+];
+
+const DESIGNATIONS = [
+  "Secretary", "Principal Secretary", "Additional Secretary",
+  "Joint Secretary", "Deputy Secretary", "Under Secretary",
+  "Section Officer", "Assistant Section Officer",
+  "Director", "Joint Director", "Deputy Director", "Assistant Director",
+  "Commissioner", "Additional Commissioner", "Joint Commissioner",
+  "Deputy Commissioner", "Assistant Commissioner",
+  "District Collector / DM", "Sub-Divisional Magistrate",
+  "Tahsildar / Revenue Inspector",
+  "Superintendent of Police (SP)", "Deputy SP", "Inspector",
+  "Executive Engineer", "Assistant Engineer",
+  "Chief Medical Officer", "Medical Officer",
+  "Registrar", "Deputy Registrar", "Assistant Registrar",
+  "Legal Officer", "Government Pleader",
+  "Nodal Officer", "Compliance Officer",
+  "Other / Not Listed",
+];
+
+/* ─── Helpers ─────────────────────────────────────────────── */
 
 const roleColorMap: Record<string, { border: string; bg: string; text: string; icon: string }> = {
-  indigo: {
-    border: "border-indigo-500",
-    bg:     "bg-indigo-50",
-    text:   "text-indigo-700",
-    icon:   "text-indigo-500",
-  },
-  violet: {
-    border: "border-violet-500",
-    bg:     "bg-violet-50",
-    text:   "text-violet-700",
-    icon:   "text-violet-500",
-  },
-  amber: {
-    border: "border-amber-500",
-    bg:     "bg-amber-50",
-    text:   "text-amber-700",
-    icon:   "text-amber-500",
-  },
+  indigo: { border: "border-indigo-500", bg: "bg-indigo-50",  text: "text-indigo-700",  icon: "text-indigo-500"  },
+  violet: { border: "border-violet-500", bg: "bg-violet-50",  text: "text-violet-700",  icon: "text-violet-500"  },
+  amber:  { border: "border-amber-500",  bg: "bg-amber-50",   text: "text-amber-700",   icon: "text-amber-500"   },
 };
 
 function passwordStrength(p: string): { label: string; color: string; pct: number } {
@@ -75,29 +145,30 @@ function passwordStrength(p: string): { label: string; color: string; pct: numbe
   if (/[0-9]/.test(p))         score++;
   if (/[^A-Za-z0-9]/.test(p)) score++;
   const map = [
-    { label: "Weak",   color: "bg-red-500",    pct: 25  },
-    { label: "Fair",   color: "bg-amber-400",  pct: 50  },
-    { label: "Good",   color: "bg-blue-500",   pct: 75  },
+    { label: "Weak",   color: "bg-red-500",     pct: 25  },
+    { label: "Fair",   color: "bg-amber-400",   pct: 50  },
+    { label: "Good",   color: "bg-blue-500",    pct: 75  },
     { label: "Strong", color: "bg-emerald-500", pct: 100 },
   ];
   return map[Math.max(score - 1, 0)];
 }
 
-/* ─── Page ───────────────────────────────────────────────── */
+/* ─── Page ────────────────────────────────────────────────── */
 
 export default function RegisterPage() {
   const { register } = useAuth();
+
   const [form, setForm] = useState({
     name: "", email: "", mobile: "",
     designation: "", department: "", officeUnit: "",
-    role: "REVIEWER",
+    state: "", role: "REVIEWER",
     password: "", confirmPassword: "",
     agreeTerms: false,
   });
-  const [showPassword, setShowPassword]   = useState(false);
-  const [showConfirm,  setShowConfirm]    = useState(false);
-  const [error,        setError]          = useState<string | null>(null);
-  const [loading,      setLoading]        = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm,  setShowConfirm]  = useState(false);
+  const [error,        setError]        = useState<string | null>(null);
+  const [loading,      setLoading]      = useState(false);
 
   const set =
     (k: keyof typeof form) =>
@@ -116,16 +187,11 @@ export default function RegisterPage() {
     special: /[0-9!@#$%^&*]/.test(form.password),
   };
   const strength = passwordStrength(form.password);
-  const pwdMatch = form.confirmPassword
-    ? form.password === form.confirmPassword
-    : null;
+  const pwdMatch = form.confirmPassword ? form.password === form.confirmPassword : null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (form.password !== form.confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
+    if (form.password !== form.confirmPassword) { setError("Passwords do not match."); return; }
     setError(null);
     setLoading(true);
     try {
@@ -134,10 +200,11 @@ export default function RegisterPage() {
         email:       form.email,
         password:    form.password,
         role:        form.role,
-        department:  form.department || undefined,
+        department:  form.department  || undefined,
         designation: form.designation || undefined,
-        mobile:      form.mobile || undefined,
-        office_unit: form.officeUnit || undefined,
+        mobile:      form.mobile      || undefined,
+        office_unit: form.officeUnit  || undefined,
+        state:       form.state       || undefined,
       });
     } catch (err: unknown) {
       setError((err as Error).message);
@@ -150,61 +217,56 @@ export default function RegisterPage() {
     <div className="flex min-h-screen bg-[#f8fafc] font-sans">
 
       {/* ── LEFT PANEL ── */}
-      <div className="hidden lg:flex lg:w-[42%] bg-[#0B1120] text-white p-12 flex-col relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/30 to-transparent pointer-events-none" />
+      <div className="hidden lg:flex lg:w-[42%] bg-[#0B1120] text-white flex-col relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/30 via-transparent to-violet-900/10 pointer-events-none" />
         <div className="absolute -bottom-32 -left-32 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl" />
 
-        <div className="relative z-10 flex-1 flex flex-col">
+        <div className="relative z-10 flex-1 flex flex-col p-12 xl:p-14">
           {/* Logo */}
           <div className="flex items-center gap-3 mb-14">
-            <div className="w-11 h-11 rounded-xl bg-indigo-600 flex items-center justify-center shadow-lg">
-              <Shield className="w-6 h-6 text-white" />
-            </div>
+            <Image src="/logo.png" alt="NyayaSetu" width={48} height={48} className="rounded-xl" />
             <div>
               <h1 className="text-xl font-bold tracking-tight">NyayaSetu</h1>
-              <p className="text-[10px] text-slate-400 uppercase tracking-widest">
-                AI-Powered Judgment Intelligence
+              <p className="text-[10px] text-slate-400 uppercase tracking-widest leading-tight">
+                Court Judgment Intelligence
               </p>
             </div>
           </div>
 
           {/* Hero */}
           <h2 className="text-4xl font-bold leading-tight mb-5">
-            Smarter Insights.
+            From Judgments
             <br />
-            <span className="text-indigo-400">Assured Compliance.</span>
+            <span className="text-indigo-400">to Verified</span>
+            <br />
+            <span className="text-indigo-400">Action Plans.</span>
           </h2>
-          <p className="text-slate-300 text-base leading-relaxed max-w-sm mb-14">
-            NyayaSetu transforms complex court judgments into structured,
-            verified action plans — with an immutable audit trail.
+          <p className="text-slate-300 text-base leading-relaxed max-w-sm mb-12">
+            NyayaSetu is built for every High Court jurisdiction in India —
+            extract directives, verify compliance, and maintain a tamper-evident
+            audit trail automatically.
           </p>
 
           {/* Features */}
           <div className="space-y-7">
-            <Feature
-              icon={<ShieldCheck className="text-indigo-400 w-5 h-5" />}
+            <Feature icon={<ShieldCheck className="text-indigo-400 w-5 h-5" />}
               title="100% Audit Ready"
-              desc="Tamper-evident logs for every action taken."
-            />
-            <Feature
-              icon={<Brain className="text-indigo-400 w-5 h-5" />}
+              desc="Immutable SHA-256 hash chain for every action taken." />
+            <Feature icon={<Brain className="text-indigo-400 w-5 h-5" />}
               title="AI + Human Verified"
-              desc="AI extracts, humans verify. Accuracy you can trust."
-            />
-            <Feature
-              icon={<LockKeyhole className="text-indigo-400 w-5 h-5" />}
+              desc="LLM extracts directives, humans approve. Zero hallucination policy." />
+            <Feature icon={<LockKeyhole className="text-indigo-400 w-5 h-5" />}
               title="Secure by Design"
-              desc="No raw PII sent externally. Government-grade security."
-            />
+              desc="RBAC roles, encrypted tokens, no raw PII to external services." />
           </div>
 
-          {/* Stats row */}
-          <div className="mt-auto flex gap-6 pt-14">
-            {[["3 Roles", "RBAC access control"], ["SHA-256", "Audit hash chain"], ["Groq AI", "Free-tier LLM"]].map(
-              ([val, lbl]) => (
-                <div key={val} className="text-center">
-                  <div className="text-lg font-bold text-white">{val}</div>
-                  <div className="text-xs text-slate-500">{lbl}</div>
+          {/* Stats */}
+          <div className="mt-auto pt-12 flex gap-8 border-t border-slate-800">
+            {[["28+ States", "All India coverage"], ["3 Roles", "RBAC access control"], ["SHA-256", "Audit hash chain"]].map(
+              ([v, l]) => (
+                <div key={v}>
+                  <div className="text-base font-bold text-white">{v}</div>
+                  <div className="text-xs text-slate-500">{l}</div>
                 </div>
               )
             )}
@@ -212,23 +274,29 @@ export default function RegisterPage() {
         </div>
       </div>
 
-      {/* ── RIGHT FORM AREA ── */}
+      {/* ── RIGHT FORM ── */}
       <div className="flex-1 flex flex-col h-screen overflow-y-auto">
         {/* Top bar */}
-        <div className="flex justify-end items-center px-8 py-5 shrink-0">
-          <span className="text-sm text-slate-500 mr-3">Already have an account?</span>
-          <Link
-            href="/login"
-            className="text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-4 py-2 rounded-lg transition-colors"
-          >
-            Sign In
-          </Link>
+        <div className="flex justify-between items-center px-8 py-5 shrink-0">
+          {/* Mobile logo */}
+          <div className="flex items-center gap-2 lg:hidden">
+            <Image src="/logo.png" alt="NyayaSetu" width={32} height={32} className="rounded-lg" />
+            <span className="font-bold text-slate-900">NyayaSetu</span>
+          </div>
+          <div className="hidden lg:block" />
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-slate-500">Already have an account?</span>
+            <Link href="/login"
+              className="text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-4 py-2 rounded-lg transition-colors">
+              Sign In
+            </Link>
+          </div>
         </div>
 
         {/* Form card */}
         <div className="flex-1 px-4 sm:px-10 pb-16 w-full max-w-3xl mx-auto">
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 xl:p-10">
-            {/* Header */}
+
             <div className="flex items-center gap-4 mb-10">
               <div className="w-11 h-11 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center">
                 <UserPlus className="w-5 h-5 text-indigo-600" />
@@ -236,7 +304,7 @@ export default function RegisterPage() {
               <div>
                 <h2 className="text-2xl font-bold text-slate-900">Create Your Account</h2>
                 <p className="text-slate-500 text-sm mt-0.5">
-                  Join the Karnataka High Court compliance network.
+                  Available for all Indian High Courts and Government Departments.
                 </p>
               </div>
             </div>
@@ -249,7 +317,7 @@ export default function RegisterPage() {
 
             <form onSubmit={handleSubmit} className="space-y-9">
 
-              {/* ── SECTION: Role ── */}
+              {/* ── Role Selector ── */}
               <div>
                 <SectionHeading title="Select Your Role" />
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
@@ -257,166 +325,136 @@ export default function RegisterPage() {
                     const selected = form.role === r.value;
                     const c = roleColorMap[r.color];
                     return (
-                      <button
-                        key={r.value}
-                        type="button"
+                      <button key={r.value} type="button"
                         onClick={() => setForm((f) => ({ ...f, role: r.value }))}
                         className={cn(
-                          "relative text-left p-4 rounded-xl border-2 transition-all duration-150 cursor-pointer",
+                          "relative text-left p-4 rounded-xl border-2 transition-all duration-150",
                           selected
                             ? `${c.border} ${c.bg} shadow-sm`
                             : "border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50"
-                        )}
-                      >
+                        )}>
                         {selected && (
-                          <CheckCircle2
-                            className={cn("absolute top-3 right-3 w-4 h-4", c.icon)}
-                          />
+                          <CheckCircle2 className={cn("absolute top-3 right-3 w-4 h-4", c.icon)} />
                         )}
                         <div className={cn("mb-2", selected ? c.icon : "text-slate-400")}>
                           {r.icon}
                         </div>
-                        <div
-                          className={cn(
-                            "font-semibold text-sm",
-                            selected ? c.text : "text-slate-700"
-                          )}
-                        >
+                        <div className={cn("font-semibold text-sm", selected ? c.text : "text-slate-700")}>
                           {r.label}
                         </div>
-                        <div className="text-xs text-slate-500 mt-0.5 leading-snug">
-                          {r.desc}
-                        </div>
+                        <div className="text-xs text-slate-500 mt-0.5 leading-snug">{r.desc}</div>
                       </button>
                     );
                   })}
                 </div>
               </div>
 
-              {/* ── SECTION: Personal Info ── */}
+              {/* ── Personal Info ── */}
               <div>
                 <SectionHeading title="Personal Information" />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-4">
                   <InputGroup label="Full Name" required>
                     <FieldWrap icon={<User className="w-4 h-4" />}>
-                      <input
-                        type="text" required value={form.name} onChange={set("name")}
-                        placeholder="Enter your full name"
-                        className={inputCls}
-                      />
+                      <input type="text" required value={form.name} onChange={set("name")}
+                        placeholder="Enter your full name" className={inputCls} />
                     </FieldWrap>
                   </InputGroup>
 
                   <InputGroup label="Official Email" required>
                     <FieldWrap icon={<Mail className="w-4 h-4" />}>
-                      <input
-                        type="email" required value={form.email} onChange={set("email")}
-                        placeholder="officer@karnataka.gov.in"
-                        className={inputCls}
-                      />
+                      <input type="email" required value={form.email} onChange={set("email")}
+                        placeholder="officer@nic.in" className={inputCls} />
                     </FieldWrap>
                   </InputGroup>
 
                   <InputGroup label="Mobile Number">
                     <div className="flex rounded-lg shadow-sm">
-                      <span className="inline-flex items-center px-3 rounded-l-lg border border-r-0 border-slate-300 bg-slate-50 text-slate-500 text-sm">
+                      <span className="inline-flex items-center px-3 rounded-l-lg border border-r-0 border-slate-300 bg-slate-50 text-slate-500 text-sm select-none">
                         +91
                       </span>
                       <FieldWrap icon={<Phone className="w-4 h-4" />} className="flex-1">
-                        <input
-                          type="tel" value={form.mobile} onChange={set("mobile")}
-                          placeholder="Enter mobile number"
-                          className={cn(inputCls, "rounded-l-none")}
-                        />
+                        <input type="tel" value={form.mobile} onChange={set("mobile")}
+                          placeholder="10-digit mobile number"
+                          className={cn(inputCls, "rounded-l-none")} />
                       </FieldWrap>
                     </div>
                   </InputGroup>
 
                   <InputGroup label="Designation" required>
                     <FieldWrap icon={<Briefcase className="w-4 h-4" />}>
-                      <input
-                        type="text" required value={form.designation} onChange={set("designation")}
-                        placeholder="e.g. Deputy Secretary"
-                        className={inputCls}
-                      />
+                      <select required value={form.designation} onChange={set("designation")}
+                        className={cn(inputCls, "appearance-none bg-white")}>
+                        <option value="" disabled>Select your designation</option>
+                        {DESIGNATIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+                      </select>
                     </FieldWrap>
                   </InputGroup>
                 </div>
               </div>
 
-              {/* ── SECTION: Org Info ── */}
+              {/* ── Organisation ── */}
               <div>
                 <SectionHeading title="Organisation" />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-4">
-                  <InputGroup label="Department" required>
-                    <FieldWrap icon={<Building2 className="w-4 h-4" />}>
-                      <select
-                        required value={form.department} onChange={set("department")}
-                        className={cn(inputCls, "appearance-none bg-white")}
-                      >
-                        <option value="" disabled>Select department</option>
-                        {DEPARTMENTS.map((d) => (
-                          <option key={d} value={d}>{d}</option>
-                        ))}
+                  <InputGroup label="State / UT" required>
+                    <FieldWrap icon={<MapPin className="w-4 h-4" />}>
+                      <select required value={form.state} onChange={set("state")}
+                        className={cn(inputCls, "appearance-none bg-white")}>
+                        <option value="" disabled>Select State or UT</option>
+                        {INDIAN_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </FieldWrap>
                   </InputGroup>
 
-                  <InputGroup label="Office / Unit">
+                  <InputGroup label="Department / Organisation" required>
+                    <FieldWrap icon={<Building2 className="w-4 h-4" />}>
+                      <select required value={form.department} onChange={set("department")}
+                        className={cn(inputCls, "appearance-none bg-white")}>
+                        <option value="" disabled>Select department</option>
+                        {DEPARTMENTS.map((d) => <option key={d} value={d}>{d}</option>)}
+                      </select>
+                    </FieldWrap>
+                  </InputGroup>
+
+                  <InputGroup label="Office / Unit / Division">
                     <FieldWrap icon={<Users className="w-4 h-4" />}>
-                      <input
-                        type="text" value={form.officeUnit} onChange={set("officeUnit")}
-                        placeholder="Division or unit name"
-                        className={inputCls}
-                      />
+                      <input type="text" value={form.officeUnit} onChange={set("officeUnit")}
+                        placeholder="e.g. Legal Cell, District Office"
+                        className={inputCls} />
                     </FieldWrap>
                   </InputGroup>
                 </div>
               </div>
 
-              {/* ── SECTION: Security ── */}
+              {/* ── Security ── */}
               <div>
                 <SectionHeading title="Account Security" />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-4">
-                  {/* Password */}
+                  {/* Password + strength */}
                   <div className="flex flex-col">
                     <InputGroup label="Password" required>
                       <FieldWrap icon={<Lock className="w-4 h-4" />}>
-                        <input
-                          type={showPassword ? "text" : "password"}
+                        <input type={showPassword ? "text" : "password"}
                           required value={form.password} onChange={set("password")}
-                          placeholder="Create a strong password"
-                          className={inputCls}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword((v) => !v)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                        >
+                          placeholder="Create a strong password" className={inputCls} />
+                        <button type="button" onClick={() => setShowPassword((v) => !v)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                           {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </button>
                       </FieldWrap>
                     </InputGroup>
-
-                    {/* Strength bar */}
                     {form.password && (
                       <div className="mt-2 space-y-1">
                         <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                          <div
-                            className={cn("h-full rounded-full transition-all duration-300", strength.color)}
-                            style={{ width: `${strength.pct}%` }}
-                          />
+                          <div className={cn("h-full rounded-full transition-all duration-300", strength.color)}
+                            style={{ width: `${strength.pct}%` }} />
                         </div>
                         <p className="text-xs text-slate-500">
                           Strength:{" "}
-                          <span
-                            className={cn(
-                              "font-medium",
-                              strength.pct <= 25 ? "text-red-600" :
-                              strength.pct <= 50 ? "text-amber-600" :
-                              strength.pct <= 75 ? "text-blue-600" : "text-emerald-600"
-                            )}
-                          >
+                          <span className={cn("font-medium",
+                            strength.pct <= 25 ? "text-red-600" :
+                            strength.pct <= 50 ? "text-amber-600" :
+                            strength.pct <= 75 ? "text-blue-600" : "text-emerald-600")}>
                             {strength.label}
                           </span>
                         </p>
@@ -424,42 +462,38 @@ export default function RegisterPage() {
                     )}
                   </div>
 
-                  {/* Confirm Password */}
-                  <InputGroup label="Confirm Password" required>
-                    <FieldWrap icon={<Lock className="w-4 h-4" />}>
-                      <input
-                        type={showConfirm ? "text" : "password"}
-                        required value={form.confirmPassword} onChange={set("confirmPassword")}
-                        placeholder="Repeat your password"
-                        className={cn(
-                          inputCls,
-                          pwdMatch === false && "border-red-400 focus:border-red-500 focus:ring-red-500/20",
-                          pwdMatch === true  && "border-emerald-400 focus:border-emerald-500 focus:ring-emerald-500/20"
-                        )}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowConfirm((v) => !v)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                      >
-                        {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </FieldWrap>
+                  {/* Confirm password */}
+                  <div className="flex flex-col">
+                    <InputGroup label="Confirm Password" required>
+                      <FieldWrap icon={<Lock className="w-4 h-4" />}>
+                        <input type={showConfirm ? "text" : "password"}
+                          required value={form.confirmPassword} onChange={set("confirmPassword")}
+                          placeholder="Repeat your password"
+                          className={cn(inputCls,
+                            pwdMatch === false && "border-red-400 focus:border-red-500 focus:ring-red-500/20",
+                            pwdMatch === true  && "border-emerald-400 focus:border-emerald-500 focus:ring-emerald-500/20"
+                          )} />
+                        <button type="button" onClick={() => setShowConfirm((v) => !v)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                          {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </FieldWrap>
+                    </InputGroup>
                     {pwdMatch === false && (
-                      <p className="text-xs text-red-500 mt-1">Passwords do not match</p>
+                      <p className="text-xs text-red-500 mt-1.5">Passwords do not match</p>
                     )}
                     {pwdMatch === true && (
-                      <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1">
+                      <p className="text-xs text-emerald-600 mt-1.5 flex items-center gap-1">
                         <CheckCircle2 className="w-3 h-3" /> Passwords match
                       </p>
                     )}
-                  </InputGroup>
+                  </div>
                 </div>
 
-                {/* Password rules */}
+                {/* Rules */}
                 <div className="mt-4 bg-indigo-50/60 border border-indigo-100 rounded-lg p-4 flex flex-wrap gap-4 text-xs">
                   <div className="flex items-center gap-1.5 font-medium text-indigo-700 whitespace-nowrap">
-                    <Shield className="w-3.5 h-3.5" /> Password must have:
+                    <Shield className="w-3.5 h-3.5" /> Must have:
                   </div>
                   <Rule checked={pwdRules.length}  text="8+ characters" />
                   <Rule checked={pwdRules.upper}   text="Uppercase letter" />
@@ -471,29 +505,22 @@ export default function RegisterPage() {
               {/* Terms */}
               <label className="flex items-start gap-3 cursor-pointer group">
                 <div className="relative flex items-center justify-center mt-0.5 shrink-0">
-                  <input
-                    type="checkbox" required
-                    checked={form.agreeTerms}
-                    onChange={set("agreeTerms")}
-                    className="peer w-4 h-4 appearance-none border border-slate-300 rounded cursor-pointer checked:bg-indigo-600 checked:border-indigo-600 transition-all"
-                  />
+                  <input type="checkbox" required checked={form.agreeTerms} onChange={set("agreeTerms")}
+                    className="peer w-4 h-4 appearance-none border border-slate-300 rounded cursor-pointer checked:bg-indigo-600 checked:border-indigo-600 transition-all" />
                   <CheckCircle2 className="w-3 h-3 text-white absolute opacity-0 peer-checked:opacity-100 pointer-events-none" />
                 </div>
-                <span className="text-sm text-slate-600 select-none group-hover:text-slate-800">
+                <span className="text-sm text-slate-600 group-hover:text-slate-800">
                   I agree to the{" "}
                   <Link href="#" className="text-indigo-600 hover:underline font-medium">Terms of Service</Link>
                   {" "}and{" "}
-                  <Link href="#" className="text-indigo-600 hover:underline font-medium">Privacy Policy</Link>.
-                  All actions on this platform are audit-logged as required by government policy.
+                  <Link href="#" className="text-indigo-600 hover:underline font-medium">Privacy Policy</Link>.{" "}
+                  All actions on this platform are audit-logged as per government policy.
                 </span>
               </label>
 
               {/* Submit */}
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-semibold py-3.5 rounded-xl transition-all text-sm shadow-sm flex items-center justify-center gap-2"
-              >
+              <button type="submit" disabled={loading}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-semibold py-3.5 rounded-xl transition-all text-sm shadow-sm flex items-center justify-center gap-2">
                 <UserPlus className="w-4 h-4" />
                 {loading ? "Creating Account…" : "Create Account"}
               </button>
@@ -510,7 +537,7 @@ export default function RegisterPage() {
   );
 }
 
-/* ─── Sub-components ─────────────────────────────────────── */
+/* ─── Sub-components ──────────────────────────────────────── */
 
 const inputCls =
   "w-full text-sm border border-slate-300 rounded-lg pl-10 pr-4 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all shadow-sm";
@@ -523,27 +550,18 @@ function SectionHeading({ title }: { title: string }) {
   );
 }
 
-function InputGroup({
-  label, required, children,
-}: {
-  label: string; required?: boolean; children: React.ReactNode;
-}) {
+function InputGroup({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
       <label className="text-sm font-medium text-slate-700">
-        {label}
-        {required && <span className="text-rose-500 ml-1">*</span>}
+        {label}{required && <span className="text-rose-500 ml-1">*</span>}
       </label>
       {children}
     </div>
   );
 }
 
-function FieldWrap({
-  icon, children, className,
-}: {
-  icon: React.ReactNode; children: React.ReactNode; className?: string;
-}) {
+function FieldWrap({ icon, children, className }: { icon: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
     <div className={cn("relative", className)}>
       <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
@@ -571,9 +589,7 @@ function Feature({ icon, title, desc }: { icon: React.ReactNode; title: string; 
 function Rule({ checked, text }: { checked: boolean; text: string }) {
   return (
     <div className="flex items-center gap-1.5">
-      <CheckCircle2
-        className={cn("w-3.5 h-3.5 shrink-0", checked ? "text-emerald-500" : "text-slate-300")}
-      />
+      <CheckCircle2 className={cn("w-3.5 h-3.5 shrink-0", checked ? "text-emerald-500" : "text-slate-300")} />
       <span className={cn(checked ? "text-slate-700" : "text-slate-500")}>{text}</span>
     </div>
   );

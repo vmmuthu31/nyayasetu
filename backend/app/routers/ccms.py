@@ -1,7 +1,7 @@
 """
 CCMS Integration Webhook.
 
-Karnataka High Court CCMS calls this endpoint when a case is disposed and the
+High Court CCMS calls this endpoint when a case is disposed and the
 judgment PDF is available. We validate a shared secret, then fetch + ingest
 the PDF in the background so CCMS gets an immediate 202 response.
 
@@ -25,7 +25,7 @@ router = APIRouter(prefix="/ccms", tags=["ccms"])
 
 class CcmsWebhookPayload(BaseModel):
     case_number: str
-    court: str = "Karnataka High Court"
+    court: str = "High Court"
     disposed_at: str
     pdf_url: HttpUrl
     petitioners: str = ""
