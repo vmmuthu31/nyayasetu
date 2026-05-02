@@ -1,13 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Scale } from "lucide-react";
+import Link from "next/link";
+import { Scale, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 
 export default function LoginPage() {
   const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -60,14 +62,23 @@ export default function LoginPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">Password</label>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2.5 pr-10 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
             <button
               type="submit"
@@ -78,7 +89,14 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <p className="text-xs text-slate-400 mt-6 text-center">
+          <p className="text-sm text-slate-500 mt-6 text-center">
+            Don&apos;t have an account?{" "}
+            <Link href="/register" className="font-medium text-blue-600 hover:underline">
+              Create account
+            </Link>
+          </p>
+
+          <p className="text-xs text-slate-400 mt-3 text-center">
             Secure government portal · All actions are audit-logged
           </p>
         </div>

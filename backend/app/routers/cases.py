@@ -25,6 +25,8 @@ class DirectiveOut(BaseModel):
     ambiguity_reason: str | None
     status: str
     page_number: int | None
+    highlight_coords: list[dict] | None = None   # Real PyMuPDF bounding boxes
+    limitation_days: int | None = None            # Days left in appeal window
 
     class Config:
         from_attributes = True
