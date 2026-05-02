@@ -1,47 +1,40 @@
 """
-CCMS Integration Endpoint.
+CCMS Integration Webhook.
 
-The Karnataka High Court CCMS system calls this webhook when a case is disposed
-and a judgment PDF is ready. This mirrors the architecture described in the
-problem statement: judgments are "automatically fetched into CCMS via API in PDF format."
+Karnataka High Court CCMS calls this endpoint when a case is disposed and the
+judgment PDF is available. We validate a shared secret, then fetch + ingest
+the PDF in the background so CCMS gets an immediate 202 response.
 
-CCMS sends:
-  - case_number
-  - disposed_at
-  - pdf_url  (signed URL from the High Court CIS)
-
-We fetch the PDF, run the full ingestion pipeline, and queue for human review.
+Ref: problem statement — judgments are "automatically fetched into CCMS via API
+in PDF format."
 """
 import httpx
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Header
 from pydantic import BaseModel, HttpUrl
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.database import AsyncSessionLocal
-from app.models.base import Case, Directive, CaseStatus, ActionType
-from app.routers.ingest import _run_ingestion_pipeline   # shared logic
+from app.core.database import get_db, AsyncSessionLocal
+from app.models.base import Case
+from app.routers.ingest import _run_ingestion_pipeline
 from app.services.audit import append_audit_log
 
 router = APIRouter(prefix="/ccms", tags=["ccms"])
-
-CCMS_WEBHOOK_SECRET = settings.ccms_webhook_secret  # verified in header
 
 
 class CcmsWebhookPayload(BaseModel):
     case_number: str
     court: str = "Karnataka High Court"
-    disposed_at: str                 # ISO date string
-    pdf_url: HttpUrl                 # Signed URL from High Court CIS
+    disposed_at: str
+    pdf_url: HttpUrl
     petitioners: str = ""
     respondents: str = ""
 
 
-async def _fetch_and_ingest(payload: CcmsWebhookPayload):
-    """Background task: download PDF from CIS and run full pipeline."""
-    async with httpx.AsyncClient(timeout=60) as client:
+async def _fetch_and_ingest(payload: CcmsWebhookPayload) -> None:
+    """Background task: download PDF from CIS signed URL and run full pipeline."""
+    async with httpx.AsyncClient(timeout=120) as client:
         resp = await client.get(str(payload.pdf_url))
         resp.raise_for_status()
         pdf_bytes = resp.content
@@ -52,36 +45,38 @@ async def _fetch_and_ingest(payload: CcmsWebhookPayload):
                 pdf_bytes=pdf_bytes,
                 filename=f"{payload.case_number}.pdf",
                 db=db,
-                user_id="ccms-system",  # System-initiated ingestion
+                user_id="ccms-system",
                 source="CCMS_AUTO_FETCH",
             )
             await db.commit()
         except Exception as exc:
             await db.rollback()
-            # Log failure but don't crash — CCMS will retry
-            await append_audit_log(
-                db,
-                event="CCMS_INGEST_FAILED",
-                details={"case_number": payload.case_number, "error": str(exc)},
-            )
-            await db.commit()
-            raise
+            try:
+                await append_audit_log(
+                    db,
+                    event="CCMS_INGEST_FAILED",
+                    details={"case_number": payload.case_number, "error": str(exc)},
+                )
+                await db.commit()
+            except Exception:
+                pass
 
 
-@router.post("/webhook")
+def _verify_secret(x_ccms_secret: str = Header(..., alias="X-CCMS-Secret")) -> None:
+    if x_ccms_secret != settings.ccms_webhook_secret:
+        raise HTTPException(status_code=403, detail="Invalid CCMS webhook secret")
+
+
+@router.post("/webhook", status_code=202)
 async def ccms_webhook(
     payload: CcmsWebhookPayload,
     background_tasks: BackgroundTasks,
-    x_ccms_secret: str = Header(..., alias="X-CCMS-Secret"),
+    _: None = Depends(_verify_secret),
 ):
     """
-    Called by CCMS when a judgment is disposed and the PDF is ready.
-    Validates the shared secret, then kicks off ingestion in the background
-    so CCMS gets an immediate 202 response.
+    Called by CCMS when a case is disposed and the PDF is ready.
+    Returns 202 immediately; ingestion runs in the background.
     """
-    if x_ccms_secret != CCMS_WEBHOOK_SECRET:
-        raise HTTPException(status_code=403, detail="Invalid CCMS webhook secret")
-
     background_tasks.add_task(_fetch_and_ingest, payload)
     return {
         "accepted": True,
@@ -93,26 +88,20 @@ async def ccms_webhook(
 @router.get("/status/{case_number}")
 async def ccms_case_status(
     case_number: str,
-    db: AsyncSession = Depends(lambda: AsyncSessionLocal().__aenter__()),
-    x_ccms_secret: str = Header(..., alias="X-CCMS-Secret"),
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(_verify_secret),
 ):
-    """
-    CCMS can poll this endpoint to check if a judgment has been processed
-    and what the current review status is.
-    """
-    if x_ccms_secret != CCMS_WEBHOOK_SECRET:
-        raise HTTPException(status_code=403, detail="Invalid CCMS webhook secret")
-
-    from sqlalchemy import select
+    """CCMS polls this to check processing status of a specific case."""
     result = await db.execute(select(Case).where(Case.case_number == case_number))
     case = result.scalar_one_or_none()
 
     if not case:
-        return {"case_number": case_number, "status": "NOT_FOUND"}
+        return {"case_number": case_number, "status": "NOT_FOUND", "message": "Not yet processed"}
 
     return {
         "case_number": case_number,
         "status": case.status,
         "filed_at": case.filed_at.isoformat(),
         "confidence_score": case.confidence_score,
+        "message": "Case processed and pending human review" if case.status == "PENDING_REVIEW" else f"Case {case.status.lower()}",
     }

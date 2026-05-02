@@ -1,40 +1,170 @@
 """
-LLM Layer (Claude API) — Entity extraction, structured directive analysis.
-Raw PII is never sent; only extracted/chunked text is used.
+LLM Layer — Groq API (free tier) for entity extraction and directive analysis.
+Uses llama-3.3-70b-versatile by default (128k context, very fast).
+Raw PDF bytes are never sent — only extracted text chunks.
 """
 import json
 from dataclasses import dataclass
 
-import anthropic
+from groq import Groq
 
 from app.core.config import settings
 
-client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+client = Groq(api_key=settings.groq_api_key)
 
-SYSTEM_PROMPT = """You are a legal AI assistant for the Karnataka High Court case management system.
-Your task is to analyze court judgment text and extract structured information.
-Be precise, conservative, and flag anything uncertain.
-Never invent information not present in the text."""
+SYSTEM_PROMPT = """You are a strict legal information extraction engine for the Karnataka High Court case management system (NyayaSetu).
 
-EXTRACTION_PROMPT = """Analyze the following court judgment text and extract:
+Your role is NOT to interpret, summarize, or infer.
+Your ONLY task is to extract explicitly stated information from the provided judgment text and return structured JSON.
 
-1. case_number: The full case number (e.g. WP 12345/2025)
-2. court: Court name
-3. petitioners: Names of petitioners (comma-separated)
-4. respondents: Names of respondents (comma-separated)
-5. judgment_date: Date in YYYY-MM-DD format (null if not found)
-6. directives: Array of directive objects, each with:
-   - text: The exact directive text
-   - action_type: One of COMPLY, APPEAL, INFORM, MONITOR
-   - department: The responsible government department
-   - deadline_text: Raw deadline text from judgment (e.g. "within 8 weeks", null if none)
-   - deadline_days: Number of days from judgment date (null if unclear)
-   - confidence: 0.0-1.0 confidence score
-   - is_ambiguous: true if human review needed
+CRITICAL RULES:
 
-Return ONLY valid JSON. No explanation.
+1. ZERO HALLUCINATION
+- Do NOT generate, assume, or infer any information.
+- If a field is not explicitly present in the text, return null or empty.
+- Never fabricate case numbers, party names, dates, or departments.
 
-TEXT:
+2. STRICT TEXT GROUNDING
+- Every extracted value MUST be directly traceable to the input text.
+- Directive "text" fields MUST be exact verbatim spans (no paraphrasing, no rewriting).
+
+3. CONSERVATIVE EXTRACTION
+- If there is ambiguity, mark:
+  - "is_ambiguous": true
+  - Provide a clear "ambiguity_reason"
+- Prefer missing data over incorrect data.
+
+4. DIRECTIVE CLASSIFICATION RULES
+- COMPLY → आदेश पालन / تنفيذ instruction
+- APPEAL → right to challenge or appeal
+- INFORM → notify/report/communicate
+- MONITOR → ongoing supervision/compliance tracking
+- If classification is unclear → mark ambiguous
+
+5. DEADLINE HANDLING
+- Extract deadline_text exactly as written
+- Convert to deadline_days ONLY if clearly computable:
+  - 1 week = 7 days
+  - 1 month = 30 days (ONLY if explicitly stated as month-based duration)
+- If unclear → deadline_days = null
+
+6. DEPARTMENT MAPPING
+- Extract ONLY if explicitly mentioned
+- Do NOT guess based on context
+- If unclear → mark ambiguous
+
+7. OUTPUT FORMAT ENFORCEMENT
+- Output MUST be valid JSON
+- No explanations, no markdown, no comments
+- Follow schema exactly
+
+8. ERROR HANDLING
+- If input is insufficient or corrupted → return empty structured fields
+- Never break JSON format
+
+Remember:
+This system is used in a judicial workflow. Incorrect extraction is worse than missing data.
+Be precise. Be conservative. Be literal."""
+
+EXTRACTION_PROMPT = """Analyze the following Karnataka High Court judgment text and extract structured data.
+
+Follow ALL instructions strictly.
+
+OUTPUT REQUIREMENTS:
+- Return ONLY valid JSON
+- No markdown, no explanations, no extra text
+- Use null for missing fields (do NOT guess)
+- Use empty string "" or [] where appropriate
+- Follow the schema EXACTLY
+
+SCHEMA:
+
+{
+  "case_number": string | null,
+  "court": string | null,
+  "petitioners": string,
+  "respondents": string,
+  "judgment_date": string | null,
+  "directives": [
+    {
+      "text": string,
+      "action_type": "COMPLY" | "APPEAL" | "INFORM" | "MONITOR",
+      "department": string | null,
+      "deadline_text": string | null,
+      "deadline_days": integer | null,
+      "confidence": number,
+      "is_ambiguous": boolean,
+      "ambiguity_reason": string | null
+    }
+  ]
+}
+
+EXTRACTION RULES:
+
+1. CASE NUMBER
+- Extract the full case number exactly as written
+- If multiple exist, choose the primary case heading
+- If not found → null
+
+2. COURT
+- Extract only if explicitly mentioned
+- Example: "Karnataka High Court"
+- If not found → null
+
+3. PETITIONERS / RESPONDENTS
+- Extract names exactly as written
+- Return as comma-separated string
+- Do NOT normalize or infer roles
+
+4. JUDGMENT DATE
+- Convert to YYYY-MM-DD ONLY if clearly present
+- If unclear or missing → null
+
+5. DIRECTIVES (CRITICAL)
+- Extract ONLY explicit directions/orders from the judgment
+- Each directive MUST:
+  - Be copied VERBATIM (no paraphrasing)
+  - Be a complete sentence or logical directive block
+
+6. ACTION TYPE CLASSIFICATION
+- COMPLY → instruction to perform an action
+- APPEAL → right or permission to challenge
+- INFORM → notify/report/submit information
+- MONITOR → ongoing compliance or supervision
+- If unclear → set is_ambiguous = true
+
+7. DEPARTMENT
+- Extract ONLY if explicitly mentioned
+- Do NOT infer from context
+- If unclear → null + mark ambiguous
+
+8. DEADLINES
+- deadline_text → copy exact phrase (e.g. "within 8 weeks")
+- deadline_days → compute ONLY if unambiguous:
+  - weeks × 7
+  - months × 30 (ONLY if clearly duration-based)
+- If unclear → null
+
+9. CONFIDENCE SCORE
+- 0.9–1.0 → explicit and clear
+- 0.6–0.8 → minor ambiguity
+- 0.0–0.5 → weak or partial extraction
+
+10. AMBIGUITY HANDLING
+- If ANY field in directive is unclear:
+  - set is_ambiguous = true
+  - provide short ambiguity_reason
+- Otherwise:
+  - is_ambiguous = false
+  - ambiguity_reason = null
+
+IMPORTANT:
+- Do NOT hallucinate missing information
+- Do NOT paraphrase directive text
+- Prefer null over incorrect data
+- Ensure JSON is valid and complete
+
+JUDGMENT TEXT:
 {text}"""
 
 
@@ -49,38 +179,43 @@ class ExtractedCase:
     raw_response: str
 
 
-def extract_case_entities(text: str, max_chars: int = 8000) -> ExtractedCase:
-    # Truncate to avoid excessive token use; send only the judgment body
+def extract_case_entities(text: str, max_chars: int = 12000) -> ExtractedCase:
+    """
+    Send extracted (text-only) judgment content to Groq LLM.
+    max_chars=12000 uses ~3k tokens — well within free tier limits.
+    llama-3.3-70b-versatile supports 128k context and 6000 req/day free.
+    """
     truncated = text[:max_chars]
 
-    message = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=2048,
+    response = client.chat.completions.create(
+        model=settings.groq_model,
         messages=[
-            {
-                "role": "user",
-                "content": EXTRACTION_PROMPT.format(text=truncated),
-            }
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user",   "content": EXTRACTION_PROMPT.format(text=truncated)},
         ],
-        system=SYSTEM_PROMPT,
+        temperature=0.1,       # Low temp = more deterministic JSON
+        max_tokens=2048,
+        response_format={"type": "json_object"},  # Groq JSON mode — guaranteed valid JSON
     )
 
-    raw = message.content[0].text
+    raw = response.choices[0].message.content or "{}"
+
     try:
-        # Strip markdown code fences if present
-        clean = raw.strip()
-        if clean.startswith("```"):
-            clean = "\n".join(clean.split("\n")[1:-1])
-        data = json.loads(clean)
+        data = json.loads(raw)
     except json.JSONDecodeError:
-        data = {}
+        # Fallback: strip any accidental markdown fences
+        clean = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+        try:
+            data = json.loads(clean)
+        except json.JSONDecodeError:
+            data = {}
 
     return ExtractedCase(
-        case_number=data.get("case_number", "UNKNOWN"),
-        court=data.get("court", "Karnataka High Court"),
-        petitioners=data.get("petitioners", ""),
-        respondents=data.get("respondents", ""),
+        case_number=data.get("case_number") or "UNKNOWN",
+        court=data.get("court") or "Karnataka High Court",
+        petitioners=data.get("petitioners") or "",
+        respondents=data.get("respondents") or "",
         judgment_date=data.get("judgment_date"),
-        directives=data.get("directives", []),
+        directives=data.get("directives") or [],
         raw_response=raw,
     )
