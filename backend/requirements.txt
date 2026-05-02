@@ -14,8 +14,8 @@ pdf2image==1.17.0
 pytesseract==0.3.13
 Pillow==11.1.0
 
-# LLM
-anthropic==0.40.0
+# LLM (Groq — free tier, fast inference)
+groq==0.13.1
 
 # Storage (S3-compatible)
 boto3==1.35.95
