@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import engine
 from app.models.base import Base
-from app.routers import auth, cases, ingest, review, audit, departments, ccms
+from app.routers import auth, cases, ingest, review, audit, departments, ccms, admin
 
 
 @asynccontextmanager
@@ -51,6 +51,7 @@ app.include_router(review.router, prefix="/api")
 app.include_router(audit.router, prefix="/api")
 app.include_router(departments.router, prefix="/api")
 app.include_router(ccms.router, prefix="/api")
+app.include_router(admin.router, prefix="/api")
 
 
 @app.get("/")

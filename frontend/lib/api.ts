@@ -103,6 +103,16 @@ export const api = {
     actions: (department: string) =>
       request<DeptAction[]>(`/departments/actions?department=${encodeURIComponent(department)}`),
   },
+
+  admin: {
+    users: () => request<AdminUser[]>("/admin/users"),
+    saveSettings: (settings: Record<string, unknown>) =>
+      request("/admin/settings", {
+        method: "POST",
+        body: JSON.stringify(settings),
+      }),
+    getSettings: () => request<Record<string, unknown>>("/admin/settings"),
+  },
 };
 
 // Types
@@ -200,7 +210,21 @@ export interface StatsResponse {
     department: string;
     deadline: string;
     case_id: string;
+    action_type?: string;   // COMPLY | APPEAL | INFORM | MONITOR
+    status?: string;        // directive status
   }>;
+}
+
+export interface AdminUser {
+  id: string;
+  name: string;
+  email: string;
+  role: "ADMIN" | "REVIEWER" | "DEPT_USER";
+  department?: string;
+  designation?: string;
+  state?: string;
+  mobile?: string;
+  office_unit?: string;
 }
 
 export interface IngestResponse {

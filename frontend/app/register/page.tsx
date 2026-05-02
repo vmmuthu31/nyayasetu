@@ -1,174 +1,69 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import {
-  ShieldCheck, Brain, LockKeyhole,
-  User, Mail, Phone, Briefcase, Building2, Lock,
-  Eye, EyeOff, CheckCircle2, UserPlus, Shield,
-  Users, LayoutDashboard, Crown, MapPin,
+  Scale,
+  ShieldCheck,
+  Brain,
+  LockKeyhole,
+  User,
+  Mail,
+  Phone,
+  Briefcase,
+  Building2,
+  MapPin,
+  Lock,
+  Eye,
+  EyeOff,
+  CheckCircle2,
+  UserPlus,
+  Shield,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/lib/auth-context";
 
-/* ─── Static Data ─────────────────────────────────────────── */
-
-const ROLES = [
-  {
-    value: "REVIEWER",
-    label: "Reviewer",
-    desc: "Reviews and approves extracted directives",
-    icon: <ShieldCheck className="w-5 h-5" />,
-    color: "indigo",
-  },
-  {
-    value: "DEPT_USER",
-    label: "Dept. User",
-    desc: "Views department action plans",
-    icon: <LayoutDashboard className="w-5 h-5" />,
-    color: "violet",
-  },
-  {
-    value: "ADMIN",
-    label: "Admin",
-    desc: "Full system access and user management",
-    icon: <Crown className="w-5 h-5" />,
-    color: "amber",
-  },
-];
-
-// All 28 states + 8 UTs of India
-const INDIAN_STATES = [
-  "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
-  "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka",
-  "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram",
-  "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu",
-  "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal",
-  // Union Territories
-  "Andaman & Nicobar Islands", "Chandigarh",
-  "Dadra & Nagar Haveli and Daman & Diu", "Delhi (NCT)",
-  "Jammu & Kashmir", "Ladakh", "Lakshadweep", "Puducherry",
-];
-
-// Broad government departments — applicable across any Indian High Court jurisdiction
 const DEPARTMENTS = [
-  // Core Administration
-  "General Administration Department",
-  "Home Department",
-  "Finance Department",
-  "Law & Justice Department",
-  "Personnel & Administrative Reforms",
-  "Cabinet Affairs",
-  // Social Sectors
+  "Labour Department",
   "Education Department",
-  "Health & Family Welfare Department",
-  "Women & Child Development",
-  "Social Welfare Department",
-  "Labour & Employment Department",
-  "Tribal Welfare Department",
-  // Infrastructure
-  "Public Works Department (PWD)",
-  "Urban Development Department",
-  "Rural Development & Panchayati Raj",
-  "Housing Department",
-  "Transport Department",
-  "Energy Department",
-  "Water Resources Department",
-  "Irrigation Department",
-  "Ports & Fisheries Department",
-  // Economic
   "Revenue Department",
-  "Agriculture & Farmers Welfare",
-  "Animal Husbandry & Dairying",
-  "Industries & Commerce Department",
-  "MSME Department",
-  "Tourism Department",
-  "Food & Civil Supplies",
-  "Horticulture Department",
-  "Forest & Environment Department",
-  "Mines & Geology Department",
-  // Judicial / Legal
-  "Directorate of Prosecution",
-  "Lokayukta / Vigilance Department",
-  "Stamps & Registration Department",
-  "Excise Department",
-  "Police Department",
-  "Fire & Emergency Services",
-  "Prison Department",
-  // Technology
-  "IT & e-Governance Department",
-  "Science & Technology Department",
-  "Space Applications Centre",
-  // Other
-  "Planning Department",
-  "Statistics Department",
-  "Public Relations Department",
-  "NRI Affairs Department",
-  "Skill Development Department",
-  "Sports & Youth Affairs",
-  "Cultural Affairs Department",
-  "Other / Not Listed",
+  "Health Department",
+  "Rural Development",
+  "Urban Development",
+  "Public Works Department",
+  "Finance Department",
+  "Home Department",
+  "Agriculture Department",
+  "Law Department",
+  "General Administration",
 ];
 
-const DESIGNATIONS = [
-  "Secretary", "Principal Secretary", "Additional Secretary",
-  "Joint Secretary", "Deputy Secretary", "Under Secretary",
-  "Section Officer", "Assistant Section Officer",
-  "Director", "Joint Director", "Deputy Director", "Assistant Director",
-  "Commissioner", "Additional Commissioner", "Joint Commissioner",
-  "Deputy Commissioner", "Assistant Commissioner",
-  "District Collector / DM", "Sub-Divisional Magistrate",
-  "Tahsildar / Revenue Inspector",
-  "Superintendent of Police (SP)", "Deputy SP", "Inspector",
-  "Executive Engineer", "Assistant Engineer",
-  "Chief Medical Officer", "Medical Officer",
-  "Registrar", "Deputy Registrar", "Assistant Registrar",
-  "Legal Officer", "Government Pleader",
-  "Nodal Officer", "Compliance Officer",
-  "Other / Not Listed",
+const STATES = [
+  "Karnataka",
+  "Maharashtra",
+  "Tamil Nadu",
+  "Kerala",
+  "Delhi",
+  "Telangana",
 ];
-
-/* ─── Helpers ─────────────────────────────────────────────── */
-
-const roleColorMap: Record<string, { border: string; bg: string; text: string; icon: string }> = {
-  indigo: { border: "border-indigo-500", bg: "bg-indigo-50",  text: "text-indigo-700",  icon: "text-indigo-500"  },
-  violet: { border: "border-violet-500", bg: "bg-violet-50",  text: "text-violet-700",  icon: "text-violet-500"  },
-  amber:  { border: "border-amber-500",  bg: "bg-amber-50",   text: "text-amber-700",   icon: "text-amber-500"   },
-};
-
-function passwordStrength(p: string): { label: string; color: string; pct: number } {
-  if (!p) return { label: "", color: "", pct: 0 };
-  let score = 0;
-  if (p.length >= 8)           score++;
-  if (/[A-Z]/.test(p))         score++;
-  if (/[0-9]/.test(p))         score++;
-  if (/[^A-Za-z0-9]/.test(p)) score++;
-  const map = [
-    { label: "Weak",   color: "bg-red-500",     pct: 25  },
-    { label: "Fair",   color: "bg-amber-400",   pct: 50  },
-    { label: "Good",   color: "bg-blue-500",    pct: 75  },
-    { label: "Strong", color: "bg-emerald-500", pct: 100 },
-  ];
-  return map[Math.max(score - 1, 0)];
-}
-
-/* ─── Page ────────────────────────────────────────────────── */
 
 export default function RegisterPage() {
-  const { register } = useAuth();
-
   const [form, setForm] = useState({
-    name: "", email: "", mobile: "",
-    designation: "", department: "", officeUnit: "",
-    state: "", role: "REVIEWER",
-    password: "", confirmPassword: "",
+    name: "",
+    email: "",
+    mobile: "",
+    designation: "",
+    department: "",
+    officeUnit: "",
+    state: "",
+    password: "",
+    confirmPassword: "",
+    captcha: "",
     agreeTerms: false,
   });
+
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm,  setShowConfirm]  = useState(false);
-  const [error,        setError]        = useState<string | null>(null);
-  const [loading,      setLoading]      = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const set =
     (k: keyof typeof form) =>
@@ -180,354 +75,399 @@ export default function RegisterPage() {
       setForm((f) => ({ ...f, [k]: value }));
     };
 
-  const pwdRules = {
-    length:  form.password.length >= 8,
-    upper:   /[A-Z]/.test(form.password),
-    lower:   /[a-z]/.test(form.password),
-    special: /[0-9!@#$%^&*]/.test(form.password),
-  };
-  const strength = passwordStrength(form.password);
-  const pwdMatch = form.confirmPassword ? form.password === form.confirmPassword : null;
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (form.password !== form.confirmPassword) { setError("Passwords do not match."); return; }
-    setError(null);
-    setLoading(true);
-    try {
-      await register({
-        name:        form.name,
-        email:       form.email,
-        password:    form.password,
-        role:        form.role,
-        department:  form.department  || undefined,
-        designation: form.designation || undefined,
-        mobile:      form.mobile      || undefined,
-        office_unit: form.officeUnit  || undefined,
-        state:       form.state       || undefined,
-      });
-    } catch (err: unknown) {
-      setError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
+    // Your submission logic here
+    console.log("Submitting:", form);
+  };
+
+  // Password validation rules
+  const pwdRules = {
+    length: form.password.length >= 8,
+    upper: /[A-Z]/.test(form.password),
+    lower: /[a-z]/.test(form.password),
+    special: /[0-9!@#$%^&*]/.test(form.password),
   };
 
   return (
     <div className="flex min-h-screen bg-[#f8fafc] font-sans">
+      {/* LEFT SIDEBAR - Branding & Value Prop */}
+      <div className="hidden lg:flex lg:w-[45%] xl:w-[40%] bg-[#0B1120] text-white p-10 xl:p-14 flex-col relative overflow-hidden border-r border-slate-800">
+        {/* Subtle background glow effect */}
+        <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-[#1e1b4b]/40 to-transparent pointer-events-none" />
 
-      {/* ── LEFT PANEL ── */}
-      <div className="hidden lg:flex lg:w-[42%] bg-[#0B1120] text-white flex-col relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/30 via-transparent to-violet-900/10 pointer-events-none" />
-        <div className="absolute -bottom-32 -left-32 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl" />
-
-        <div className="relative z-10 flex-1 flex flex-col p-12 xl:p-14">
-          {/* Logo */}
-          <div className="flex items-center gap-3 mb-14">
-            <Image src="/logo.png" alt="NyayaSetu" width={48} height={48} className="rounded-xl" />
+        <div className="relative z-10 flex-1">
+          {/* Logo Area */}
+          <div className="flex items-center gap-3 mb-12">
+            <img src="/logo.png" alt="NyayaSetu Logo" className="w-auto h-20" />
             <div>
-              <h1 className="text-xl font-bold tracking-tight">NyayaSetu</h1>
-              <p className="text-[10px] text-slate-400 uppercase tracking-widest leading-tight">
-                Court Judgment Intelligence
+              <h1 className="text-2xl font-bold tracking-tight">NyayaSetu</h1>
+              <p className="text-[10px] text-slate-400 uppercase tracking-widest mt-0.5">
+                AI-Powered Court Judgment
+              </p>
+              <p className="text-[10px] text-slate-400 uppercase tracking-widest">
+                Intelligence & Verified Action Engine
               </p>
             </div>
           </div>
 
-          {/* Hero */}
-          <h2 className="text-4xl font-bold leading-tight mb-5">
-            From Judgments
+          {/* Hero Copy */}
+          <h2 className="text-4xl xl:text-5xl font-bold leading-tight mb-6">
+            Smarter Insights.
             <br />
-            <span className="text-indigo-400">to Verified</span>
-            <br />
-            <span className="text-indigo-400">Action Plans.</span>
+            <span className="text-indigo-400">Assured Compliance.</span>
           </h2>
-          <p className="text-slate-300 text-base leading-relaxed max-w-sm mb-12">
-            NyayaSetu is built for every High Court jurisdiction in India —
-            extract directives, verify compliance, and maintain a tamper-evident
-            audit trail automatically.
+          <p className="text-slate-300 text-lg leading-relaxed max-w-md mb-16">
+            NyayaSetu transforms complex court judgments into structured,
+            verified action plans with an immutable audit trail.
           </p>
 
-          {/* Features */}
-          <div className="space-y-7">
-            <Feature icon={<ShieldCheck className="text-indigo-400 w-5 h-5" />}
-              title="100% Audit Ready"
-              desc="Immutable SHA-256 hash chain for every action taken." />
-            <Feature icon={<Brain className="text-indigo-400 w-5 h-5" />}
-              title="AI + Human Verified"
-              desc="LLM extracts directives, humans approve. Zero hallucination policy." />
-            <Feature icon={<LockKeyhole className="text-indigo-400 w-5 h-5" />}
-              title="Secure by Design"
-              desc="RBAC roles, encrypted tokens, no raw PII to external services." />
-          </div>
+          {/* Feature List */}
+          <div className="space-y-8">
+            <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+              Why NyayaSetu?
+            </h3>
 
-          {/* Stats */}
-          <div className="mt-auto pt-12 flex gap-8 border-t border-slate-800">
-            {[["28+ States", "All India coverage"], ["3 Roles", "RBAC access control"], ["SHA-256", "Audit hash chain"]].map(
-              ([v, l]) => (
-                <div key={v}>
-                  <div className="text-base font-bold text-white">{v}</div>
-                  <div className="text-xs text-slate-500">{l}</div>
-                </div>
-              )
-            )}
+            <Feature
+              icon={<ShieldCheck className="text-indigo-400 w-6 h-6" />}
+              title="100% Audit Ready"
+              desc="Immutable audit trail for every action with tamper-evident logs."
+            />
+            <Feature
+              icon={<Brain className="text-indigo-400 w-6 h-6" />}
+              title="AI + Human Verified"
+              desc="AI extracts, humans verify. Accuracy you can trust."
+            />
+            <Feature
+              icon={<LockKeyhole className="text-indigo-400 w-6 h-6" />}
+              title="Secure & Compliant"
+              desc="No raw PII sent to external models. Built for government-grade security."
+            />
           </div>
         </div>
       </div>
 
-      {/* ── RIGHT FORM ── */}
+      {/* RIGHT SIDE - Form Area */}
       <div className="flex-1 flex flex-col h-screen overflow-y-auto">
-        {/* Top bar */}
-        <div className="flex justify-between items-center px-8 py-5 shrink-0">
-          {/* Mobile logo */}
-          <div className="flex items-center gap-2 lg:hidden">
-            <Image src="/logo.png" alt="NyayaSetu" width={32} height={32} className="rounded-lg" />
-            <span className="font-bold text-slate-900">NyayaSetu</span>
-          </div>
-          <div className="hidden lg:block" />
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-slate-500">Already have an account?</span>
-            <Link href="/login"
-              className="text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-4 py-2 rounded-lg transition-colors">
-              Sign In
-            </Link>
-          </div>
+        {/* Top Navbar */}
+        <div className="w-full flex justify-end items-center px-8 py-6">
+          <span className="text-sm text-slate-600 mr-4">
+            Already have an account?
+          </span>
+          <Link
+            href="/login"
+            className="text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-5 py-2 rounded-lg border border-indigo-200 transition-colors"
+          >
+            Sign In
+          </Link>
         </div>
 
-        {/* Form card */}
-        <div className="flex-1 px-4 sm:px-10 pb-16 w-full max-w-3xl mx-auto">
+        {/* Form Container */}
+        <div className="flex-1 px-4 sm:px-8 pb-12 w-full max-w-4xl mx-auto">
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 xl:p-10">
-
+            {/* Form Header */}
             <div className="flex items-center gap-4 mb-10">
-              <div className="w-11 h-11 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center">
-                <UserPlus className="w-5 h-5 text-indigo-600" />
+              <div className="w-12 h-12 rounded-full bg-indigo-50 flex items-center justify-center border border-indigo-100">
+                <User className="w-6 h-6 text-indigo-600" />
               </div>
               <div>
-                <h2 className="text-2xl font-bold text-slate-900">Create Your Account</h2>
-                <p className="text-slate-500 text-sm mt-0.5">
-                  Available for all Indian High Courts and Government Departments.
+                <h2 className="text-2xl font-bold text-slate-900">
+                  Create Your NyayaSetu Account
+                </h2>
+                <p className="text-slate-500 text-sm mt-1">
+                  Join thousands of government officers simplifying compliance.
                 </p>
               </div>
             </div>
 
-            {error && (
-              <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-                {error}
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-9">
-
-              {/* ── Role Selector ── */}
+            <form onSubmit={handleSubmit} className="space-y-8">
+              {/* SECTION 1: Personal Info */}
               <div>
-                <SectionHeading title="Select Your Role" />
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
-                  {ROLES.map((r) => {
-                    const selected = form.role === r.value;
-                    const c = roleColorMap[r.color];
-                    return (
-                      <button key={r.value} type="button"
-                        onClick={() => setForm((f) => ({ ...f, role: r.value }))}
-                        className={cn(
-                          "relative text-left p-4 rounded-xl border-2 transition-all duration-150",
-                          selected
-                            ? `${c.border} ${c.bg} shadow-sm`
-                            : "border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50"
-                        )}>
-                        {selected && (
-                          <CheckCircle2 className={cn("absolute top-3 right-3 w-4 h-4", c.icon)} />
-                        )}
-                        <div className={cn("mb-2", selected ? c.icon : "text-slate-400")}>
-                          {r.icon}
-                        </div>
-                        <div className={cn("font-semibold text-sm", selected ? c.text : "text-slate-700")}>
-                          {r.label}
-                        </div>
-                        <div className="text-xs text-slate-500 mt-0.5 leading-snug">{r.desc}</div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* ── Personal Info ── */}
-              <div>
-                <SectionHeading title="Personal Information" />
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-4">
+                <h3 className="text-base font-semibold text-slate-900 mb-4 border-b pb-2">
+                  Personal Information
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <InputGroup label="Full Name" required>
-                    <FieldWrap icon={<User className="w-4 h-4" />}>
-                      <input type="text" required value={form.name} onChange={set("name")}
-                        placeholder="Enter your full name" className={inputCls} />
-                    </FieldWrap>
+                    <div className="relative">
+                      <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type="text"
+                        required
+                        value={form.name}
+                        onChange={set("name")}
+                        placeholder="Enter your full name"
+                        className={inputClasses}
+                      />
+                    </div>
                   </InputGroup>
 
-                  <InputGroup label="Official Email" required>
-                    <FieldWrap icon={<Mail className="w-4 h-4" />}>
-                      <input type="email" required value={form.email} onChange={set("email")}
-                        placeholder="officer@nic.in" className={inputCls} />
-                    </FieldWrap>
+                  <InputGroup label="Email Address" required>
+                    <div className="relative">
+                      <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type="email"
+                        required
+                        value={form.email}
+                        onChange={set("email")}
+                        placeholder="Enter your official email"
+                        className={inputClasses}
+                      />
+                    </div>
                   </InputGroup>
 
-                  <InputGroup label="Mobile Number">
+                  <InputGroup label="Mobile Number" required>
                     <div className="flex rounded-lg shadow-sm">
-                      <span className="inline-flex items-center px-3 rounded-l-lg border border-r-0 border-slate-300 bg-slate-50 text-slate-500 text-sm select-none">
+                      <span className="inline-flex items-center px-4 rounded-l-lg border border-r-0 border-slate-300 bg-slate-50 text-slate-500 sm:text-sm">
                         +91
                       </span>
-                      <FieldWrap icon={<Phone className="w-4 h-4" />} className="flex-1">
-                        <input type="tel" value={form.mobile} onChange={set("mobile")}
-                          placeholder="10-digit mobile number"
-                          className={cn(inputCls, "rounded-l-none")} />
-                      </FieldWrap>
+                      <div className="relative flex-1">
+                        <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <input
+                          type="tel"
+                          required
+                          value={form.mobile}
+                          onChange={set("mobile")}
+                          placeholder="Enter mobile number"
+                          className={cn(inputClasses, "rounded-l-none pl-10")}
+                        />
+                      </div>
                     </div>
                   </InputGroup>
 
                   <InputGroup label="Designation" required>
-                    <FieldWrap icon={<Briefcase className="w-4 h-4" />}>
-                      <select required value={form.designation} onChange={set("designation")}
-                        className={cn(inputCls, "appearance-none bg-white")}>
-                        <option value="" disabled>Select your designation</option>
-                        {DESIGNATIONS.map((d) => <option key={d} value={d}>{d}</option>)}
-                      </select>
-                    </FieldWrap>
+                    <div className="relative">
+                      <Briefcase className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type="text"
+                        required
+                        value={form.designation}
+                        onChange={set("designation")}
+                        placeholder="Enter your designation"
+                        className={inputClasses}
+                      />
+                    </div>
                   </InputGroup>
                 </div>
               </div>
 
-              {/* ── Organisation ── */}
+              {/* SECTION 2: Org Info */}
               <div>
-                <SectionHeading title="Organisation" />
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-4">
-                  <InputGroup label="State / UT" required>
-                    <FieldWrap icon={<MapPin className="w-4 h-4" />}>
-                      <select required value={form.state} onChange={set("state")}
-                        className={cn(inputCls, "appearance-none bg-white")}>
-                        <option value="" disabled>Select State or UT</option>
-                        {INDIAN_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
+                <h3 className="text-base font-semibold text-slate-900 mb-4 border-b pb-2">
+                  Organization Information
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
+                  <InputGroup label="Department / Organization" required>
+                    <div className="relative">
+                      <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <select
+                        required
+                        value={form.department}
+                        onChange={set("department")}
+                        className={cn(inputClasses, "appearance-none bg-white")}
+                      >
+                        <option value="" disabled>
+                          Select your department
+                        </option>
+                        {DEPARTMENTS.map((d) => (
+                          <option key={d} value={d}>
+                            {d}
+                          </option>
+                        ))}
                       </select>
-                    </FieldWrap>
+                    </div>
                   </InputGroup>
 
-                  <InputGroup label="Department / Organisation" required>
-                    <FieldWrap icon={<Building2 className="w-4 h-4" />}>
-                      <select required value={form.department} onChange={set("department")}
-                        className={cn(inputCls, "appearance-none bg-white")}>
-                        <option value="" disabled>Select department</option>
-                        {DEPARTMENTS.map((d) => <option key={d} value={d}>{d}</option>)}
-                      </select>
-                    </FieldWrap>
-                  </InputGroup>
-
-                  <InputGroup label="Office / Unit / Division">
-                    <FieldWrap icon={<Users className="w-4 h-4" />}>
-                      <input type="text" value={form.officeUnit} onChange={set("officeUnit")}
-                        placeholder="e.g. Legal Cell, District Office"
-                        className={inputCls} />
-                    </FieldWrap>
+                  <InputGroup label="Office / Unit">
+                    <div className="relative">
+                      <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type="text"
+                        value={form.officeUnit}
+                        onChange={set("officeUnit")}
+                        placeholder="Enter office or unit name"
+                        className={inputClasses}
+                      />
+                    </div>
                   </InputGroup>
                 </div>
+
+                <InputGroup label="State" required>
+                  <div className="relative">
+                    <MapPin className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <select
+                      required
+                      value={form.state}
+                      onChange={set("state")}
+                      className={cn(inputClasses, "appearance-none bg-white")}
+                    >
+                      <option value="" disabled>
+                        Select State
+                      </option>
+                      {STATES.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </InputGroup>
               </div>
 
-              {/* ── Security ── */}
+              {/* SECTION 3: Security */}
               <div>
-                <SectionHeading title="Account Security" />
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-4">
-                  {/* Password + strength */}
-                  <div className="flex flex-col">
-                    <InputGroup label="Password" required>
-                      <FieldWrap icon={<Lock className="w-4 h-4" />}>
-                        <input type={showPassword ? "text" : "password"}
-                          required value={form.password} onChange={set("password")}
-                          placeholder="Create a strong password" className={inputCls} />
-                        <button type="button" onClick={() => setShowPassword((v) => !v)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
-                      </FieldWrap>
-                    </InputGroup>
-                    {form.password && (
-                      <div className="mt-2 space-y-1">
-                        <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                          <div className={cn("h-full rounded-full transition-all duration-300", strength.color)}
-                            style={{ width: `${strength.pct}%` }} />
-                        </div>
-                        <p className="text-xs text-slate-500">
-                          Strength:{" "}
-                          <span className={cn("font-medium",
-                            strength.pct <= 25 ? "text-red-600" :
-                            strength.pct <= 50 ? "text-amber-600" :
-                            strength.pct <= 75 ? "text-blue-600" : "text-emerald-600")}>
-                            {strength.label}
-                          </span>
-                        </p>
-                      </div>
-                    )}
-                  </div>
+                <h3 className="text-base font-semibold text-slate-900 mb-4 border-b pb-2">
+                  Account Security
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-4">
+                  <InputGroup label="Password" required>
+                    <div className="relative">
+                      <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        required
+                        value={form.password}
+                        onChange={set("password")}
+                        placeholder="Create a strong password"
+                        className={inputClasses}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        {showPassword ? (
+                          <EyeOff className="w-4 h-4" />
+                        ) : (
+                          <Eye className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+                  </InputGroup>
 
-                  {/* Confirm password */}
-                  <div className="flex flex-col">
-                    <InputGroup label="Confirm Password" required>
-                      <FieldWrap icon={<Lock className="w-4 h-4" />}>
-                        <input type={showConfirm ? "text" : "password"}
-                          required value={form.confirmPassword} onChange={set("confirmPassword")}
-                          placeholder="Repeat your password"
-                          className={cn(inputCls,
-                            pwdMatch === false && "border-red-400 focus:border-red-500 focus:ring-red-500/20",
-                            pwdMatch === true  && "border-emerald-400 focus:border-emerald-500 focus:ring-emerald-500/20"
-                          )} />
-                        <button type="button" onClick={() => setShowConfirm((v) => !v)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                          {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
-                      </FieldWrap>
-                    </InputGroup>
-                    {pwdMatch === false && (
-                      <p className="text-xs text-red-500 mt-1.5">Passwords do not match</p>
-                    )}
-                    {pwdMatch === true && (
-                      <p className="text-xs text-emerald-600 mt-1.5 flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" /> Passwords match
-                      </p>
-                    )}
-                  </div>
+                  <InputGroup label="Confirm Password" required>
+                    <div className="relative">
+                      <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type={showConfirm ? "text" : "password"}
+                        required
+                        value={form.confirmPassword}
+                        onChange={set("confirmPassword")}
+                        placeholder="Confirm your password"
+                        className={inputClasses}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirm(!showConfirm)}
+                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        {showConfirm ? (
+                          <EyeOff className="w-4 h-4" />
+                        ) : (
+                          <Eye className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+                  </InputGroup>
                 </div>
 
-                {/* Rules */}
-                <div className="mt-4 bg-indigo-50/60 border border-indigo-100 rounded-lg p-4 flex flex-wrap gap-4 text-xs">
-                  <div className="flex items-center gap-1.5 font-medium text-indigo-700 whitespace-nowrap">
-                    <Shield className="w-3.5 h-3.5" /> Must have:
+                {/* Password Rules Box */}
+                <div className="bg-indigo-50/50 border border-indigo-100 rounded-lg p-4 flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+                  <div className="flex items-center gap-2 text-indigo-700 font-medium text-sm whitespace-nowrap">
+                    <Shield className="w-4 h-4" /> Password must contain:
                   </div>
-                  <Rule checked={pwdRules.length}  text="8+ characters" />
-                  <Rule checked={pwdRules.upper}   text="Uppercase letter" />
-                  <Rule checked={pwdRules.lower}   text="Lowercase letter" />
-                  <Rule checked={pwdRules.special} text="Number or symbol" />
+                  <div className="flex flex-wrap gap-4 text-xs">
+                    <Rule
+                      checked={pwdRules.length}
+                      text="At least 8 characters"
+                    />
+                    <Rule
+                      checked={pwdRules.upper}
+                      text="One uppercase letter"
+                    />
+                    <Rule
+                      checked={pwdRules.lower}
+                      text="One lowercase letter"
+                    />
+                    <Rule
+                      checked={pwdRules.special}
+                      text="One number/special character"
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* Terms */}
-              <label className="flex items-start gap-3 cursor-pointer group">
-                <div className="relative flex items-center justify-center mt-0.5 shrink-0">
-                  <input type="checkbox" required checked={form.agreeTerms} onChange={set("agreeTerms")}
-                    className="peer w-4 h-4 appearance-none border border-slate-300 rounded cursor-pointer checked:bg-indigo-600 checked:border-indigo-600 transition-all" />
+              {/* SECTION 4: Verification & Submit */}
+              <div className="pt-2">
+                <InputGroup label="Verification">
+                  <div className="flex items-center gap-4 mt-1">
+                    {/* Fake Captcha Graphic */}
+                    <div className="relative bg-slate-200 w-40 h-11 rounded flex items-center justify-center overflow-hidden border border-slate-300">
+                      <div
+                        className="absolute inset-0 opacity-20"
+                        style={{
+                          backgroundImage:
+                            "url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPjxyZWN0IHdpZHRoPSI0IiBoZWlnaHQ9IjQiIGZpbGw9IiNmZmYiPjwvcmVjdD48cGF0aCBkPSJNMCAwTDIgMloiIHN0cm9rZT0iIzAwMCIgc3Ryb2tlLXdpZHRoPSIxeHB4Ij48L3BhdGg+PC9zdmc+')",
+                        }}
+                      ></div>
+                      <span className="font-mono text-xl font-bold tracking-[0.3em] text-slate-700 z-10 select-none">
+                        7K3LQ9
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-md transition-colors"
+                    >
+                      <RefreshCw className="w-5 h-5" />
+                    </button>
+                    <input
+                      type="text"
+                      value={form.captcha}
+                      onChange={set("captcha")}
+                      placeholder="Enter the code shown"
+                      className={cn(inputClasses, "max-w-[200px] pl-4")}
+                    />
+                  </div>
+                </InputGroup>
+              </div>
+
+              {/* Terms Checkbox */}
+              <label className="flex items-center gap-2 cursor-pointer mt-4 group">
+                <div className="relative flex items-center justify-center">
+                  <input
+                    type="checkbox"
+                    required
+                    checked={form.agreeTerms}
+                    onChange={set("agreeTerms")}
+                    className="peer w-4 h-4 appearance-none border border-slate-300 rounded cursor-pointer checked:bg-indigo-600 checked:border-indigo-600 transition-all"
+                  />
                   <CheckCircle2 className="w-3 h-3 text-white absolute opacity-0 peer-checked:opacity-100 pointer-events-none" />
                 </div>
-                <span className="text-sm text-slate-600 group-hover:text-slate-800">
+                <span className="text-sm text-slate-600 select-none group-hover:text-slate-800">
                   I agree to the{" "}
-                  <Link href="#" className="text-indigo-600 hover:underline font-medium">Terms of Service</Link>
-                  {" "}and{" "}
-                  <Link href="#" className="text-indigo-600 hover:underline font-medium">Privacy Policy</Link>.{" "}
-                  All actions on this platform are audit-logged as per government policy.
+                  <Link href="#" className="text-indigo-600 hover:underline">
+                    Terms of Service
+                  </Link>{" "}
+                  and{" "}
+                  <Link href="#" className="text-indigo-600 hover:underline">
+                    Privacy Policy
+                  </Link>
                 </span>
               </label>
 
-              {/* Submit */}
-              <button type="submit" disabled={loading}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-semibold py-3.5 rounded-xl transition-all text-sm shadow-sm flex items-center justify-center gap-2">
-                <UserPlus className="w-4 h-4" />
-                {loading ? "Creating Account…" : "Create Account"}
+              {/* Submit Button */}
+              <button
+                type="submit"
+                className="w-full bg-[#4338ca] hover:bg-[#3730a3] text-white font-medium py-3.5 rounded-xl transition-all duration-200 text-sm shadow-sm flex items-center justify-center gap-2 mt-6"
+              >
+                <UserPlus className="w-5 h-5" />
+                Create Account
               </button>
 
-              <div className="flex items-center justify-center gap-1.5 text-xs text-slate-400 pb-2">
+              <div className="flex items-center justify-center gap-2 text-xs text-slate-500 mt-6 pb-4">
                 <LockKeyhole className="w-3.5 h-3.5" />
-                Your data is encrypted. No raw PII is sent to external services.
+                <span>
+                  Your data is encrypted and secure. We respect your privacy.
+                </span>
               </div>
             </form>
           </div>
@@ -537,50 +477,48 @@ export default function RegisterPage() {
   );
 }
 
-/* ─── Sub-components ──────────────────────────────────────── */
+// Subcomponents
 
-const inputCls =
+const inputClasses =
   "w-full text-sm border border-slate-300 rounded-lg pl-10 pr-4 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all shadow-sm";
 
-function SectionHeading({ title }: { title: string }) {
+function InputGroup({
+  label,
+  required,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  children: React.ReactNode;
+}) {
   return (
-    <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wider border-b border-slate-100 pb-2">
-      {title}
-    </h3>
-  );
-}
-
-function InputGroup({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label className="text-sm font-medium text-slate-700">
-        {label}{required && <span className="text-rose-500 ml-1">*</span>}
+    <div className="flex flex-col">
+      <label className="block text-sm font-medium text-slate-700 mb-1.5">
+        {label}
+        {required && <span className="text-rose-500 ml-1">*</span>}
       </label>
       {children}
     </div>
   );
 }
 
-function FieldWrap({ icon, children, className }: { icon: React.ReactNode; children: React.ReactNode; className?: string }) {
-  return (
-    <div className={cn("relative", className)}>
-      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-        {icon}
-      </span>
-      {children}
-    </div>
-  );
-}
-
-function Feature({ icon, title, desc }: { icon: React.ReactNode; title: string; desc: string }) {
+function Feature({
+  icon,
+  title,
+  desc,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  desc: string;
+}) {
   return (
     <div className="flex items-start gap-4">
-      <div className="w-10 h-10 rounded-xl bg-slate-800/50 border border-slate-700 flex items-center justify-center shrink-0">
+      <div className="w-12 h-12 rounded-xl bg-slate-800/50 border border-slate-700 flex items-center justify-center shrink-0">
         {icon}
       </div>
       <div>
-        <h4 className="font-semibold text-white text-sm mb-0.5">{title}</h4>
-        <p className="text-xs text-slate-400 leading-relaxed">{desc}</p>
+        <h4 className="font-semibold text-white mb-1">{title}</h4>
+        <p className="text-sm text-slate-400 leading-relaxed">{desc}</p>
       </div>
     </div>
   );
@@ -589,8 +527,15 @@ function Feature({ icon, title, desc }: { icon: React.ReactNode; title: string; 
 function Rule({ checked, text }: { checked: boolean; text: string }) {
   return (
     <div className="flex items-center gap-1.5">
-      <CheckCircle2 className={cn("w-3.5 h-3.5 shrink-0", checked ? "text-emerald-500" : "text-slate-300")} />
-      <span className={cn(checked ? "text-slate-700" : "text-slate-500")}>{text}</span>
+      <CheckCircle2
+        className={cn(
+          "w-3.5 h-3.5",
+          checked ? "text-emerald-500" : "text-slate-300",
+        )}
+      />
+      <span className={cn(checked ? "text-slate-700" : "text-slate-500")}>
+        {text}
+      </span>
     </div>
   );
 }

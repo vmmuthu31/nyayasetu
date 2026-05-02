@@ -152,20 +152,23 @@ async def get_stats(
         "REJECTED": row.rejected,
     }
 
-    # Upcoming deadlines — join in single query
+    # Upcoming deadlines — all active directives with a deadline (not just top 5)
     now = datetime.utcnow()
     deadline_result = await db.execute(
         select(
+            Directive.id,
             Directive.department,
             Directive.deadline,
+            Directive.action_type,
+            Directive.status,
             Directive.case_id,
             Case.case_number,
         )
         .join(Case, Directive.case_id == Case.id)
-        .where(Directive.deadline >= now)
-        .where(Directive.status == CaseStatus.PENDING_REVIEW)
+        .where(Directive.deadline.is_not(None))
+        .where(Directive.status != CaseStatus.REJECTED)
         .order_by(Directive.deadline.asc())
-        .limit(5)
+        .limit(200)
     )
 
     upcoming = [
@@ -173,7 +176,9 @@ async def get_stats(
             "case_number": row.case_number,
             "department": row.department,
             "deadline": row.deadline.isoformat() if row.deadline else None,
-            "case_id": row.case_id,
+            "case_id": str(row.case_id),
+            "action_type": row.action_type,
+            "status": row.status.value if hasattr(row.status, "value") else str(row.status),
         }
         for row in deadline_result.all()
     ]
