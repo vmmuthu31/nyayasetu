@@ -1,17 +1,22 @@
 from datetime import datetime, timedelta
+import hashlib
+import bcrypt
 from jose import jwt
-from passlib.context import CryptContext
 from .config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# bcrypt has a hard 72-byte limit on passwords.
+# We SHA-256 pre-hash so any length password works, and the hash
+# is always 32 bytes — well within the limit.
+def _prepare(password: str) -> bytes:
+    return hashlib.sha256(password.encode()).hexdigest().encode()
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(_prepare(password), bcrypt.gensalt(rounds=12)).decode()
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    return bcrypt.checkpw(_prepare(plain), hashed.encode())
 
 
 def create_access_token(data: dict) -> str:
