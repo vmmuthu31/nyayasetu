@@ -40,6 +40,11 @@ app.include_router(departments.router, prefix="/api")
 app.include_router(ccms.router, prefix="/api")
 
 
+@app.get("/")
+async def root():
+    return {"message": "🚀 NyayaSetu API is running!", "docs": "/docs", "health": "/health"}
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "NyayaSetu API"}
