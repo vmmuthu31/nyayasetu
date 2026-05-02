@@ -121,6 +121,9 @@ export interface RegisterData {
   role?: string;
   department?: string;
   designation?: string;
+  mobile?: string;
+  office_unit?: string;
+  state?: string;
 }
 
 export interface CaseListItem {

@@ -47,6 +47,9 @@ class User(Base):
     role = Column(Enum(UserRole), default=UserRole.REVIEWER)
     department = Column(String)
     designation = Column(String)
+    mobile = Column(String)
+    office_unit = Column(String)
+    state = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

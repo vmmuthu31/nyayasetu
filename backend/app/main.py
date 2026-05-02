@@ -13,6 +13,13 @@ from app.routers import auth, cases, ingest, review, audit, departments, ccms
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Safe column additions — idempotent, won't fail if column already exists
+        for sql in [
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS mobile VARCHAR",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS office_unit VARCHAR",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS state VARCHAR",
+        ]:
+            await conn.execute(__import__("sqlalchemy").text(sql))
     yield
 
 

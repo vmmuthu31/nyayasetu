@@ -24,6 +24,9 @@ class RegisterRequest(BaseModel):
     role: UserRole = UserRole.REVIEWER
     department: str | None = None
     designation: str | None = None
+    mobile: str | None = None
+    office_unit: str | None = None
+    state: str | None = None
 
 
 class TokenResponse(BaseModel):
@@ -67,6 +70,9 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
         role=req.role,
         department=req.department,
         designation=req.designation,
+        mobile=req.mobile,
+        office_unit=req.office_unit,
+        state=req.state,
     )
     db.add(user)
     await db.commit()
