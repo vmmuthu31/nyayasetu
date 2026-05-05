@@ -112,6 +112,7 @@ export const api = {
         body: JSON.stringify(settings),
       }),
     getSettings: () => request<Record<string, unknown>>("/admin/settings"),
+    systemInfo: () => request<SystemInfo>("/admin/system-info"),
   },
 };
 
@@ -213,6 +214,18 @@ export interface StatsResponse {
     action_type?: string;   // COMPLY | APPEAL | INFORM | MONITOR
     status?: string;        // directive status
   }>;
+}
+
+export interface SystemInfo {
+  version: string;
+  service: string;
+  python: string;
+  platform: string;
+  database: string;
+  storage: string;
+  llm: string;
+  audit_chain: string;
+  frontend_url: string;
 }
 
 export interface AdminUser {

@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Settings, Save, ShieldCheck, Bell, Database, Globe, Key, RefreshCw } from "lucide-react";
+import { Settings, Save, ShieldCheck, Bell, Database, Globe, Key, RefreshCw, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { api } from "@/lib/api";
+import { api, SystemInfo } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const LS_KEY = "ns_admin_settings";
@@ -62,11 +62,13 @@ export default function AdminSettingsPage() {
   const { user } = useAuth();
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
 
   const [toggles, setToggles] = useState<Record<string, boolean>>(DEFAULT_TOGGLES);
   const [textVals, setTextVals] = useState<Record<string, string>>(DEFAULT_TEXT);
 
-  // Load from localStorage on mount (and try backend)
+  // Load from backend (with localStorage fallback) on mount
   useEffect(() => {
     const stored = localStorage.getItem(LS_KEY);
     if (stored) {
@@ -76,25 +78,33 @@ export default function AdminSettingsPage() {
         if (parsed.textVals) setTextVals(parsed.textVals);
       } catch { /* ignore */ }
     }
-    // Also try loading from backend (gracefully ignore if endpoint not yet live)
     api.admin.getSettings()
       .then((remote) => {
         if (remote.toggles) setToggles(remote.toggles as Record<string, boolean>);
         if (remote.textVals) setTextVals(remote.textVals as Record<string, string>);
       })
-      .catch(() => { /* backend endpoint optional — localStorage is the fallback */ });
+      .catch(() => { /* fall back to localStorage */ });
+
+    // Live system info — never hardcoded
+    api.admin.systemInfo()
+      .then(setSystemInfo)
+      .catch(() => setSystemInfo(null));
   }, []);
 
   const handleSave = async () => {
     setSaving(true);
+    setSaveError(null);
     const payload = { toggles, textVals };
-    // Persist locally immediately
     localStorage.setItem(LS_KEY, JSON.stringify(payload));
-    // Best-effort sync to backend
-    api.admin.saveSettings(payload).catch(() => {});
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+    try {
+      await api.admin.saveSettings(payload);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (e: unknown) {
+      setSaveError((e as Error).message ?? "Could not save to backend");
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (user?.role !== "ADMIN") {

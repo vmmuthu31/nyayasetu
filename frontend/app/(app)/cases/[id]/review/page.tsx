@@ -1,15 +1,14 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
 import {
-  Bell, Sun, Moon, ChevronRight, ChevronDown,
+  ChevronRight, ChevronDown,
   Calendar, FileText, Hash, Building2,
-  CheckCircle2, Edit2, AlertCircle, Clock,
-  Download, ExternalLink, Maximize2, Minus, Plus,
-  RotateCw, Save, CheckCheck, X,
+  CheckCircle2, AlertCircle, Clock,
+  Download, ExternalLink,
+  CheckCheck, X,
 } from "lucide-react";
 import { api, CaseDetail, Directive, AuditEntry } from "@/lib/api";
 import { formatDate, cn, daysUntil } from "@/lib/utils";
@@ -54,9 +53,7 @@ export default function ReviewPage() {
   const [toast,      setToast]      = useState<{ msg: string; ok: boolean } | null>(null);
   const [pdfUrl,     setPdfUrl]     = useState<string | null>(null);
   const [activeTab,  setActiveTab]  = useState<"pdf" | "text" | "blocks">("pdf");
-  const [darkMode,   setDarkMode]   = useState(false);
   const [auditLogs,  setAuditLogs]  = useState<AuditEntry[]>([]);
-  const [activeBlock, setActiveBlock] = useState(0);
 
   useEffect(() => {
     Promise.all([
@@ -161,17 +158,7 @@ export default function ReviewPage() {
         </div>
         {/* Right controls */}
         <div className="flex items-center gap-3">
-          <button className="relative text-slate-400 hover:text-slate-600 p-2 rounded-lg hover:bg-slate-100 transition-colors">
-            <Bell className="w-4.5 h-4.5" />
-            <span className="absolute top-1 right-1 w-4 h-4 bg-orange-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">9</span>
-          </button>
-          <button
-            onClick={() => setDarkMode(v => !v)}
-            className="text-slate-400 hover:text-slate-600 p-2 rounded-lg hover:bg-slate-100 transition-colors"
-          >
-            {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </button>
-          <div className="flex items-center gap-2 pl-3 border-l border-slate-200">
+          <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-xs font-bold">
               {initials}
             </div>
@@ -248,9 +235,16 @@ export default function ReviewPage() {
 
             {/* Buttons */}
             <div className="flex items-center gap-2 pt-1">
-              <button className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-lg transition-colors">
-                <Save className="w-3.5 h-3.5" /> Save Draft
-              </button>
+              {pdfUrl && (
+                <a
+                  href={pdfUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" /> Open PDF
+                </a>
+              )}
               <button
                 onClick={handleSubmitAll}
                 disabled={submitting}
@@ -299,19 +293,23 @@ export default function ReviewPage() {
           <div className="flex-1 overflow-hidden relative">
             {activeTab === "pdf" && (
               <div className="h-full flex flex-col">
-                {/* PDF toolbar */}
+                {/* PDF toolbar — file label + open in tab */}
                 <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-slate-100 bg-slate-50 text-xs text-slate-500">
-                  <span className="font-medium truncate max-w-[160px]">
-                    {caseData.case_number}_Judgment.pdf
+                  <span className="font-medium truncate max-w-[200px] flex items-center gap-1.5">
+                    <FileText className="w-3 h-3 shrink-0" />
+                    {caseData.case_number} · {caseData.page_count || "?"} pages
                   </span>
-                  <div className="flex items-center gap-1">
-                    <button className="p-1 hover:bg-slate-200 rounded"><Minus className="w-3 h-3" /></button>
-                    <span className="px-1">100%</span>
-                    <button className="p-1 hover:bg-slate-200 rounded"><Plus className="w-3 h-3" /></button>
-                    <span className="mx-1 text-slate-300">|</span>
-                    <button className="p-1 hover:bg-slate-200 rounded"><RotateCw className="w-3 h-3" /></button>
-                    <button className="p-1 hover:bg-slate-200 rounded"><Maximize2 className="w-3 h-3" /></button>
-                  </div>
+                  {pdfUrl && (
+                    <a
+                      href={pdfUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-1 px-2 py-0.5 hover:bg-slate-200 rounded text-slate-600"
+                      title="Open PDF in new tab"
+                    >
+                      <ExternalLink className="w-3 h-3" /> Open
+                    </a>
+                  )}
                 </div>
                 {pdfUrl ? (
                   <iframe
@@ -404,14 +402,14 @@ export default function ReviewPage() {
                   onClick={() => setActiveTab("blocks")}
                   className="text-[10px] text-indigo-600 hover:text-indigo-800 flex items-center gap-0.5"
                 >
-                  <Maximize2 className="w-3 h-3" />
+                  Expand <ChevronRight className="w-3 h-3" />
                 </button>
               </div>
               <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
                 {caseData.directives.map((d, i) => (
                   <button
                     key={d.id}
-                    onClick={() => { setSelected(d); setEditForm(d); setActiveBlock(i); }}
+                    onClick={() => { setSelected(d); setEditForm(d); }}
                     className={cn(
                       "shrink-0 w-[72px] rounded-lg border p-2 text-left transition-all",
                       selected?.id === d.id
@@ -446,7 +444,7 @@ export default function ReviewPage() {
               </span>
             </div>
 
-            {/* Case-level fields */}
+            {/* Case-level fields — confidence is the case overall extraction confidence */}
             <FieldRow
               label="Case Number"
               value={caseData.case_number}
@@ -456,25 +454,25 @@ export default function ReviewPage() {
             <FieldRow
               label="Parties"
               value={`${caseData.petitioners} vs ${caseData.respondents}`}
-              confidence={caseData.confidence_score * 0.95}
+              confidence={caseData.confidence_score}
               icon={Building2}
             />
             <FieldRow
               label="Court"
               value={caseData.court}
-              confidence={caseData.confidence_score * 0.98}
+              confidence={caseData.confidence_score}
               icon={Building2}
             />
             <FieldRow
               label="Order Date"
               value={formatDate(caseData.judgment_date)}
-              confidence={caseData.judgment_date ? 0.95 : 0}
+              confidence={caseData.judgment_date ? caseData.confidence_score : 0}
               icon={Calendar}
             />
             <FieldRow
               label="Received Date"
               value={formatDate(caseData.received_at ?? caseData.filed_at)}
-              confidence={0.95}
+              confidence={caseData.received_at || caseData.filed_at ? 1 : 0}
               icon={Calendar}
             />
 
@@ -776,9 +774,6 @@ function FieldRow({
           <CheckCircle2 className="w-3 h-3" /> {cb.label}
         </span>
         <span className="text-[10px] text-slate-400">{cb.pct}%</span>
-        <button className="text-[10px] text-slate-400 hover:text-indigo-600 px-2 py-0.5 border border-slate-200 hover:border-indigo-300 rounded-md transition-colors">
-          Edit
-        </button>
       </div>
     </div>
   );
@@ -803,9 +798,6 @@ function SubFieldRow({
       )}>
         {verified ? <><CheckCircle2 className="w-3 h-3" />Verified</> : "Review"}
       </span>
-      <button className="text-[10px] text-slate-400 hover:text-indigo-600 px-2 py-0.5 border border-slate-200 hover:border-indigo-300 rounded-md transition-colors ml-1">
-        Edit
-      </button>
     </div>
   );
 }
