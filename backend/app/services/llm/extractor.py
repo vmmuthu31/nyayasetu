@@ -4,13 +4,26 @@ Uses llama-3.3-70b-versatile by default (128k context, very fast).
 Raw PDF bytes are never sent — only extracted text chunks.
 """
 import json
+import logging
 from dataclasses import dataclass
 
 from groq import Groq
 
 from app.core.config import settings
 
-client = Groq(api_key=settings.groq_api_key)
+log = logging.getLogger(__name__)
+
+# Lazy client — instantiated on first use so app boots even without a key.
+_client: Groq | None = None
+
+
+def _get_client() -> Groq | None:
+    global _client
+    if not settings.groq_api_key:
+        return None
+    if _client is None:
+        _client = Groq(api_key=settings.groq_api_key)
+    return _client
 
 SYSTEM_PROMPT = """You are a strict legal information extraction engine for NyayaSetu — an AI-powered court judgment intelligence system used across all Indian High Courts and judicial bodies.
 
@@ -179,31 +192,54 @@ class ExtractedCase:
     raw_response: str
 
 
+def _empty_result(text: str, reason: str) -> ExtractedCase:
+    """Return an empty extraction so the rest of the pipeline (legal_chunker) can take over."""
+    log.warning("LLM extraction unavailable: %s — falling back to legal_chunker", reason)
+    return ExtractedCase(
+        case_number="",
+        court="",
+        petitioners="",
+        respondents="",
+        judgment_date=None,
+        directives=[],
+        raw_response=f'{{"_fallback_reason": "{reason}"}}',
+    )
+
+
 def extract_case_entities(text: str, max_chars: int = 12000) -> ExtractedCase:
     """
     Send extracted (text-only) judgment content to Groq LLM.
     max_chars=12000 uses ~3k tokens — well within free tier limits.
     llama-3.3-70b-versatile supports 128k context and 6000 req/day free.
+
+    On any failure (no API key, network error, quota exceeded, malformed JSON)
+    returns an empty ExtractedCase so the regex-based legal_chunker can take over.
     """
+    client = _get_client()
+    if client is None:
+        return _empty_result(text, "groq_api_key not configured")
+
     truncated = text[:max_chars]
 
-    response = client.chat.completions.create(
-        model=settings.groq_model,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user",   "content": EXTRACTION_PROMPT.format(text=truncated)},
-        ],
-        temperature=0.1,       # Low temp = more deterministic JSON
-        max_tokens=2048,
-        response_format={"type": "json_object"},  # Groq JSON mode — guaranteed valid JSON
-    )
+    try:
+        response = client.chat.completions.create(
+            model=settings.groq_model,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user",   "content": EXTRACTION_PROMPT.format(text=truncated)},
+            ],
+            temperature=0.1,
+            max_tokens=2048,
+            response_format={"type": "json_object"},
+        )
+    except Exception as e:
+        return _empty_result(text, f"groq_api_error: {type(e).__name__}")
 
     raw = response.choices[0].message.content or "{}"
 
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        # Fallback: strip any accidental markdown fences
         clean = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
         try:
             data = json.loads(clean)
@@ -211,10 +247,11 @@ def extract_case_entities(text: str, max_chars: int = 12000) -> ExtractedCase:
             data = {}
 
     return ExtractedCase(
-        case_number=data.get("case_number") or "UNKNOWN",
-        court=data.get("court") or "High Court of India",
-        petitioners=data.get("petitioners") or "",
-        respondents=data.get("respondents") or "",
+        # Prefer null/empty over fake placeholders — UI renders "—" when blank
+        case_number=(data.get("case_number") or "").strip(),
+        court=(data.get("court") or "").strip(),
+        petitioners=(data.get("petitioners") or "").strip(),
+        respondents=(data.get("respondents") or "").strip(),
         judgment_date=data.get("judgment_date"),
         directives=data.get("directives") or [],
         raw_response=raw,

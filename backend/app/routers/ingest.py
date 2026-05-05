@@ -57,6 +57,16 @@ async def _run_ingestion_pipeline(
     # Step 2: LLM entity extraction — text only, no raw PDF bytes sent
     llm_result = extract_case_entities(extraction.full_text)
 
+    # If LLM didn't return a case number (no key, API failure, or judgment text
+    # didn't contain a clear case number), synthesise one from the file's hash
+    # so the case can still be persisted. The reviewer can correct it on review.
+    if not llm_result.case_number:
+        import hashlib as _hashlib
+        synth = _hashlib.sha1(pdf_bytes).hexdigest()[:8].upper()
+        llm_result.case_number = f"PENDING-{synth}"
+    if not llm_result.court:
+        llm_result.court = "Court — pending review"
+
     # Step 3: Rule-based chunking (used when LLM returns no directives)
     rule_directives = extract_directives(extraction.full_text)
     directives_data = llm_result.directives or [
