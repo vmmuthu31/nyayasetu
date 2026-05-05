@@ -147,30 +147,49 @@ export default function AdminSettingsPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {saveError && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+            Could not save to backend: {saveError}
+          </div>
+        )}
         <SettingsGroup icon={Globe} title="General" settings={GENERAL_SETTINGS} toggles={toggles} textVals={textVals} setToggles={setToggles} setTextVals={setTextVals} />
         <SettingsGroup icon={ShieldCheck} title="Review Workflow" settings={REVIEW_SETTINGS} toggles={toggles} textVals={textVals} setToggles={setToggles} setTextVals={setTextVals} />
         <SettingsGroup icon={Bell} title="Notifications" settings={NOTIFICATION_SETTINGS} toggles={toggles} textVals={textVals} setToggles={setToggles} setTextVals={setTextVals} />
         <SettingsGroup icon={Key} title="Security & Audit" settings={SECURITY_SETTINGS} toggles={toggles} textVals={textVals} setToggles={setToggles} setTextVals={setTextVals} />
 
-        {/* DB / System info */}
+        {/* DB / System info — live from backend, never hardcoded */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2">
             <Database className="w-4 h-4 text-slate-400" />
             <h2 className="text-sm font-semibold text-slate-700">System Information</h2>
+            <span className="ml-auto text-[10px] font-medium text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+              Live
+            </span>
           </div>
           <div className="divide-y divide-slate-100">
-            {[
-              { label: "Backend", value: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api" },
-              { label: "Version", value: "1.0.0 · NyayaSetu" },
-              { label: "Database", value: "PostgreSQL via asyncpg" },
-              { label: "Storage", value: "MinIO (S3-compatible)" },
-              { label: "AI Engine", value: "Gemini Flash / GPT-4o" },
-            ].map(({ label, value }) => (
-              <div key={label} className="flex items-center justify-between px-5 py-3">
-                <span className="text-sm text-slate-500">{label}</span>
-                <span className="text-sm font-mono text-slate-700">{value}</span>
+            {systemInfo ? (
+              [
+                { label: "Service", value: `${systemInfo.service} v${systemInfo.version}` },
+                { label: "Backend URL", value: process.env.NEXT_PUBLIC_API_URL ?? "—" },
+                { label: "Frontend URL", value: systemInfo.frontend_url },
+                { label: "Python Runtime", value: `${systemInfo.python} on ${systemInfo.platform}` },
+                { label: "Database", value: systemInfo.database },
+                { label: "Storage", value: systemInfo.storage },
+                { label: "AI / LLM Provider", value: systemInfo.llm },
+                { label: "Audit Trail", value: systemInfo.audit_chain },
+              ].map(({ label, value }) => (
+                <div key={label} className="flex items-center justify-between px-5 py-3 gap-4">
+                  <span className="text-sm text-slate-500 shrink-0">{label}</span>
+                  <span className="text-sm font-mono text-slate-700 truncate text-right">{value}</span>
+                </div>
+              ))
+            ) : (
+              <div className="px-5 py-6 text-center text-slate-400 text-sm">
+                <RefreshCw className="w-4 h-4 animate-spin inline mr-2" />
+                Fetching live system information…
               </div>
-            ))}
+            )}
           </div>
         </div>
       </div>
