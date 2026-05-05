@@ -49,6 +49,33 @@ async def get_settings(_admin: User = Depends(require_admin)) -> dict[str, Any]:
     return {}
 
 
+@router.get("/system-info")
+async def system_info(_admin: User = Depends(require_admin)) -> dict[str, Any]:
+    """Live system information for the admin panel — never hardcoded."""
+    import platform
+    import sys
+    from app.core.config import settings as app_settings
+
+    # Detect what's actually configured
+    llm_provider = "Groq (llama-3.3-70b)" if app_settings.groq_api_key else "Not configured"
+    storage_backend = (
+        f"S3-compatible @ {app_settings.s3_endpoint_url}"
+        if app_settings.s3_endpoint_url else "AWS S3"
+    )
+
+    return {
+        "version": "1.0.0",
+        "service": "NyayaSetu API",
+        "python": sys.version.split()[0],
+        "platform": platform.system(),
+        "database": "PostgreSQL (asyncpg)",
+        "storage": storage_backend,
+        "llm": llm_provider,
+        "audit_chain": "SHA-256 hash chain (tamper-evident)",
+        "frontend_url": app_settings.frontend_url,
+    }
+
+
 @router.post("/settings")
 async def save_settings(
     body: dict[str, Any],

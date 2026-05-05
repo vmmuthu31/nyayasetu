@@ -244,7 +244,14 @@ async def get_pdf_url(
     case = result.scalar_one_or_none()
     if not case or not case.pdf_storage_key:
         raise HTTPException(status_code=404, detail="PDF not found")
-    url = storage.get_presigned_url(case.pdf_storage_key)
+    try:
+        url = storage.get_presigned_url(case.pdf_storage_key)
+    except Exception as e:
+        # MinIO/S3 unavailable — return 503 with a helpful message instead of crashing
+        raise HTTPException(
+            status_code=503,
+            detail=f"PDF storage temporarily unavailable: {type(e).__name__}",
+        )
     return {"url": url}
 
 
