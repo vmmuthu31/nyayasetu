@@ -76,9 +76,7 @@ export default function AdminUsersPage() {
       <div className="flex-1 overflow-y-auto p-6">
         {error && (
           <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-            {error === "404 Not Found"
-              ? "Admin users endpoint not yet implemented on the backend. Users will appear here once /api/admin/users is available."
-              : error}
+            Could not load users: {error}
           </div>
         )}
 

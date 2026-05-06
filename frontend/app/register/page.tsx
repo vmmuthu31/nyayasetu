@@ -436,10 +436,7 @@ export default function RegisterPage() {
                 onChange={(e) => setAgreeTerms(e.target.checked)}
                 className="mt-0.5 w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
               <span className="text-sm text-slate-600 leading-relaxed">
-                I agree to the{" "}
-                <Link href="#" className="text-indigo-600 hover:underline">Terms of Service</Link>
-                {" "}and{" "}
-                <Link href="#" className="text-indigo-600 hover:underline">Privacy Policy</Link>.
+                I agree to the Terms of Service and Privacy Policy.
                 All actions on this platform are audit-logged as per government policy.
               </span>
             </label>

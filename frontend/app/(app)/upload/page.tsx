@@ -85,7 +85,7 @@ export default function UploadPage() {
         ) : (
           <div className="text-center">
             <p className="font-medium text-slate-600">Drop a PDF here or click to browse</p>
-            <p className="text-xs text-slate-400 mt-1">Karnataka High Court judgment PDFs supported</p>
+            <p className="text-xs text-slate-400 mt-1">Indian High Court &amp; Supreme Court judgment PDFs supported</p>
           </div>
         )}
       </div>

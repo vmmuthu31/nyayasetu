@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Upload, ClipboardList, Building2,
   Users, Settings, ChevronRight, LogOut, LifeBuoy,
-  FileText, Calendar, Download, BarChart3, HelpCircle,
+  FileText, Calendar, Download, BarChart3,
   PanelLeftClose, PanelLeftOpen, Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -153,25 +153,21 @@ export function Sidebar() {
         )}
       </nav>
 
-      {/* ── Help ── */}
+      {/* ── System status ── */}
       {!collapsed && (
         <div className="mx-2 mb-2 rounded-xl bg-slate-800/60 border border-slate-700/50 px-3 py-2.5">
           <div className="flex items-center gap-2 mb-1">
-            <HelpCircle className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            <span className="text-slate-300 text-xs font-medium">Need Help?</span>
+            <LifeBuoy className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span className="text-slate-200 text-xs font-medium">System Healthy</span>
           </div>
-          <div className="flex gap-3 text-xs">
-            <Link href="#" className="text-indigo-400 hover:text-indigo-300">User Guide</Link>
-            <span className="text-slate-600">·</span>
-            <Link href="#" className="text-indigo-400 hover:text-indigo-300">Support</Link>
-          </div>
+          <p className="text-[10px] text-slate-500 leading-snug">
+            Audit chain verified · {pendingCount} pending review
+          </p>
         </div>
       )}
       {collapsed && (
-        <div className="flex justify-center pb-2">
-          <button className="text-slate-400 hover:text-white p-2 rounded-lg hover:bg-slate-700/50 transition-colors">
-            <LifeBuoy className="w-4 h-4" />
-          </button>
+        <div className="flex justify-center pb-2" title="System Healthy">
+          <div className="w-2 h-2 rounded-full bg-emerald-400" />
         </div>
       )}
 
