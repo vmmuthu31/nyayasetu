@@ -110,7 +110,7 @@ async def _run_ingestion_pipeline(
             {
                 "text": text,
                 "action_type": directive.get("action_type"),
-                "department": directive.get("department"),
+                "department": directive.get("department") or "",
                 "deadline_text": directive.get("deadline_text"),
                 "deadline_days": directive.get("deadline_days"),
                 "confidence": directive.get("confidence"),
@@ -128,7 +128,7 @@ async def _run_ingestion_pipeline(
             {
                 "text": d.text,
                 "action_type": d.action_type,
-                "department": d.department,
+                "department": d.department or "",
                 "confidence": d.confidence,
                 "is_ambiguous": d.is_ambiguous,
                 "ambiguity_reason": d.ambiguity_reason,
