@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Download, Search } from "lucide-react";
 import { api, AuditEntry, CaseDetail, CaseListItem } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
+import { can } from "@/lib/rbac";
 
 const PAGE_SIZE = 5;
 
@@ -20,6 +22,7 @@ type DownloadItem = {
 };
 
 export default function DownloadsPage() {
+  const { user } = useAuth();
   const [cases, setCases] = useState<CaseListItem[]>([]);
   const [details, setDetails] = useState<Record<string, CaseDetail | null>>({});
   const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
@@ -37,7 +40,7 @@ export default function DownloadsPage() {
       try {
         const [verifiedCases, logs] = await Promise.all([
           api.cases.list({ status: "VERIFIED", limit: 100 }),
-          api.audit.logs({ limit: 50 }).catch(() => [] as AuditEntry[]),
+          can(user, "view_audit") ? api.audit.logs({ limit: 50 }).catch(() => [] as AuditEntry[]) : Promise.resolve([] as AuditEntry[]),
         ]);
         setCases(verifiedCases);
         setAuditLogs(logs);
@@ -51,7 +54,7 @@ export default function DownloadsPage() {
         setLoading(false);
       }
     });
-  }, []);
+  }, [user]);
 
   const departments = useMemo(
     () =>
@@ -87,6 +90,10 @@ export default function DownloadsPage() {
   const visibleItems = filteredItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const dateRangeLabel = useMemo(() => formatDateRange(items), [items]);
 
+  const availableTabs = (["Documents", "Extracts", "Action Plans", "Audit Logs"] as const).filter(
+    (item) => item !== "Audit Logs" || can(user, "view_audit"),
+  );
+
   return (
     <main className="h-full overflow-y-auto bg-white">
       <div className="mx-auto flex min-h-full w-full max-w-[1040px] flex-col px-8 py-8">
@@ -96,7 +103,7 @@ export default function DownloadsPage() {
         </header>
 
         <div className="mt-8 flex items-center gap-8 border-b border-slate-100">
-          {(["Documents", "Extracts", "Action Plans", "Audit Logs"] as const).map((item) => (
+          {availableTabs.map((item) => (
             <button
               key={item}
               type="button"

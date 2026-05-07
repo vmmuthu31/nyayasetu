@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { api, AdminUser, AuditEntry, DeptSummary, StatsResponse } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+import { can } from "@/lib/rbac";
 
 type ReportCard = {
   title: string;
@@ -10,6 +12,7 @@ type ReportCard = {
 };
 
 export default function ReportsPage() {
+  const { user } = useAuth();
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [departments, setDepartments] = useState<DeptSummary[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
@@ -24,9 +27,9 @@ export default function ReportsPage() {
       try {
         const [caseStats, deptSummary, logs, adminUsers] = await Promise.all([
           api.cases.stats(),
-          api.departments.summary(),
-          api.audit.logs({ limit: 100 }),
-          api.admin.users().catch(() => [] as AdminUser[]),
+          can(user, "manage_departments") ? api.departments.summary() : Promise.resolve([] as DeptSummary[]),
+          can(user, "view_audit") ? api.audit.logs({ limit: 100 }) : Promise.resolve([] as AuditEntry[]),
+          can(user, "manage_users") ? api.admin.users().catch(() => [] as AdminUser[]) : Promise.resolve([] as AdminUser[]),
         ]);
         setStats(caseStats);
         setDepartments(deptSummary);
@@ -38,7 +41,7 @@ export default function ReportsPage() {
         setLoading(false);
       }
     });
-  }, []);
+  }, [user]);
 
   const reportCards: ReportCard[] = [
     {

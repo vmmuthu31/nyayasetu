@@ -130,12 +130,12 @@ export function Sidebar() {
         )}
       >
         {!collapsed && (
-          <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex items-center -gap-2.5 min-w-0">
             <Image
               src="/logo.png"
               alt="NyayaSetu"
-              width={34}
-              height={34}
+              width={55}
+              height={55}
               className="rounded-lg shrink-0"
             />
             <div className="min-w-0">

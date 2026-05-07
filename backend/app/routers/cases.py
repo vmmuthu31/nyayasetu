@@ -4,14 +4,32 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc, case as sql_case, outerjoin
+from sqlalchemy import select, func, desc
 
 from app.core.database import get_db
-from app.models.base import Case, Directive, CaseStatus, User
+from app.models.base import Case, Directive, CaseStatus, User, UserRole
 from app.routers.deps import get_current_user
 from app.services.ingestion import storage
 
 router = APIRouter(prefix="/cases", tags=["cases"])
+
+
+def _is_department_user(user: User) -> bool:
+    return user.role == UserRole.DEPT_USER
+
+
+async def _can_access_case(db: AsyncSession, current_user: User, case_id: str) -> bool:
+    if not _is_department_user(current_user):
+        return True
+
+    result = await db.execute(
+        select(func.count(Directive.id))
+        .join(Case, Directive.case_id == Case.id)
+        .where(Directive.case_id == case_id)
+        .where(Directive.department == current_user.department)
+        .where(Case.status.in_([CaseStatus.VERIFIED, CaseStatus.ACTIONED, CaseStatus.APPEALED]))
+    )
+    return (result.scalar() or 0) > 0
 
 
 class DirectiveOut(BaseModel):
@@ -86,7 +104,7 @@ async def list_cases(
     limit: int = Query(50, le=200),
     offset: int = Query(0),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     # Single query: cases LEFT JOIN directive count — no N+1
     directive_count_subq = (
@@ -100,6 +118,14 @@ async def list_cases(
         .outerjoin(directive_count_subq, Case.id == directive_count_subq.c.case_id)
         .order_by(desc(Case.filed_at))
     )
+
+    if _is_department_user(current_user):
+        q = (
+            q.join(Directive, Directive.case_id == Case.id)
+            .where(Directive.department == current_user.department)
+            .where(Case.status.in_([CaseStatus.VERIFIED, CaseStatus.ACTIONED, CaseStatus.APPEALED]))
+            .distinct()
+        )
 
     if status:
         q = q.where(Case.status == status)
@@ -131,16 +157,27 @@ async def list_cases(
 @router.get("/stats")
 async def get_stats(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    # Single query for all status counts using conditional aggregation
-    count_q = select(
-        func.count(Case.id).filter(Case.status == CaseStatus.PENDING_REVIEW).label("pending"),
-        func.count(Case.id).filter(Case.status == CaseStatus.VERIFIED).label("verified"),
-        func.count(Case.id).filter(Case.status == CaseStatus.ACTIONED).label("actioned"),
-        func.count(Case.id).filter(Case.status == CaseStatus.APPEALED).label("appealed"),
-        func.count(Case.id).filter(Case.status == CaseStatus.REJECTED).label("rejected"),
-    )
+    if _is_department_user(current_user):
+        count_q = select(
+            func.count(func.distinct(Case.id)).filter(Case.status == CaseStatus.PENDING_REVIEW).label("pending"),
+            func.count(func.distinct(Case.id)).filter(Case.status == CaseStatus.VERIFIED).label("verified"),
+            func.count(func.distinct(Case.id)).filter(Case.status == CaseStatus.ACTIONED).label("actioned"),
+            func.count(func.distinct(Case.id)).filter(Case.status == CaseStatus.APPEALED).label("appealed"),
+            func.count(func.distinct(Case.id)).filter(Case.status == CaseStatus.REJECTED).label("rejected"),
+        )
+        .join(Case, Directive.case_id == Case.id)
+        .where(Directive.department == current_user.department)
+        .where(Case.status.in_([CaseStatus.VERIFIED, CaseStatus.ACTIONED, CaseStatus.APPEALED]))
+    else:
+        count_q = select(
+            func.count(Case.id).filter(Case.status == CaseStatus.PENDING_REVIEW).label("pending"),
+            func.count(Case.id).filter(Case.status == CaseStatus.VERIFIED).label("verified"),
+            func.count(Case.id).filter(Case.status == CaseStatus.ACTIONED).label("actioned"),
+            func.count(Case.id).filter(Case.status == CaseStatus.APPEALED).label("appealed"),
+            func.count(Case.id).filter(Case.status == CaseStatus.REJECTED).label("rejected"),
+        )
     count_result = await db.execute(count_q)
     row = count_result.one()
 
@@ -152,9 +189,7 @@ async def get_stats(
         "REJECTED": row.rejected,
     }
 
-    # Upcoming deadlines — all active directives with a deadline (not just top 5)
-    now = datetime.utcnow()
-    deadline_result = await db.execute(
+    deadline_query = (
         select(
             Directive.id,
             Directive.department,
@@ -167,8 +202,12 @@ async def get_stats(
         .join(Case, Directive.case_id == Case.id)
         .where(Directive.deadline.is_not(None))
         .where(Directive.status != CaseStatus.REJECTED)
-        .order_by(Directive.deadline.asc())
-        .limit(200)
+    )
+    if _is_department_user(current_user):
+        deadline_query = deadline_query.where(Directive.department == current_user.department)
+
+    deadline_result = await db.execute(
+        deadline_query.order_by(Directive.deadline.asc()).limit(200)
     )
 
     upcoming = [
@@ -190,8 +229,11 @@ async def get_stats(
 async def get_case(
     case_id: str,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
+    if not await _can_access_case(db, current_user, case_id):
+        raise HTTPException(status_code=403, detail="Unauthorized case access")
+
     result = await db.execute(select(Case).where(Case.id == case_id))
     case = result.scalar_one_or_none()
     if not case:
@@ -201,6 +243,8 @@ async def get_case(
         select(Directive).where(Directive.case_id == case_id).order_by(Directive.created_at.asc())
     )
     directives = dir_result.scalars().all()
+    if _is_department_user(current_user):
+        directives = [directive for directive in directives if directive.department == current_user.department]
 
     directive_outs = [DirectiveOut.model_validate(d) for d in directives]
 
@@ -238,8 +282,11 @@ async def get_case(
 async def get_pdf_url(
     case_id: str,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
+    if not await _can_access_case(db, current_user, case_id):
+        raise HTTPException(status_code=403, detail="Unauthorized case access")
+
     result = await db.execute(select(Case).where(Case.id == case_id))
     case = result.scalar_one_or_none()
     if not case or not case.pdf_storage_key:
@@ -259,9 +306,12 @@ async def get_pdf_url(
 async def export_action_plan(
     case_id: str,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Export verified action plan as structured JSON (ready for PDF rendering or CSV)."""
+    if not await _can_access_case(db, current_user, case_id):
+        raise HTTPException(status_code=403, detail="Unauthorized case access")
+
     result = await db.execute(select(Case).where(Case.id == case_id))
     case = result.scalar_one_or_none()
     if not case:

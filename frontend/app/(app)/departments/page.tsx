@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { api, DeptAction, DeptSummary } from "@/lib/api";
 import { cn, daysUntil } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
 
 type ActionPlanRow = {
   caseId: string;
@@ -16,6 +17,7 @@ type ActionPlanRow = {
 };
 
 export default function DepartmentsPage() {
+  const { user } = useAuth();
   const [summaries, setSummaries] = useState<DeptSummary[]>([]);
   const [selected, setSelected] = useState("");
   const [actions, setActions] = useState<DeptAction[]>([]);
@@ -31,7 +33,11 @@ export default function DepartmentsPage() {
         const data = await api.departments.summary();
         setSummaries(data);
         if (data.length > 0) {
-          setSelected((current) => current || data[0].department);
+          const preferred =
+            user?.role === "DEPT_USER"
+              ? data.find((item) => item.department === user.department)?.department
+              : data[0].department;
+          setSelected((current) => current || preferred || data[0].department);
         }
       } catch (e) {
         setError((e as Error).message);
@@ -39,7 +45,7 @@ export default function DepartmentsPage() {
         setLoading(false);
       }
     });
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     if (!selected) return;
@@ -102,6 +108,7 @@ export default function DepartmentsPage() {
               <select
                 value={selected}
                 onChange={(event) => setSelected(event.target.value)}
+                disabled={user?.role === "DEPT_USER"}
                 className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                 aria-label="Select department"
               >
