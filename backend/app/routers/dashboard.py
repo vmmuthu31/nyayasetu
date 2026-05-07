@@ -168,22 +168,56 @@ async def _load_cases(
     current_user: User,
     department: str | None,
 ) -> list[Case]:
-    query = select(Case).order_by(desc(Case.updated_at), desc(Case.filed_at))
+
+    # frontend bug safety
+    if department == "undefined":
+        department = None
+
+    query = select(Case)
+
+    # Department user restriction
     if _is_department_user(current_user):
         query = (
-            query.join(Directive, Directive.case_id == Case.id)
-            .where(Directive.department == current_user.department)
-            .distinct()
+            query.join(
+                Directive,
+                Directive.case_id == Case.id,
+            )
+            .where(
+                Directive.department == current_user.department
+            )
         )
+
+    # Admin/reviewer department filtering
     elif department:
         query = (
-            query.join(Directive, Directive.case_id == Case.id)
-            .where(Directive.department == department)
-            .distinct()
+            query.join(
+                Directive,
+                Directive.case_id == Case.id,
+            )
+            .where(
+                Directive.department == department
+            )
         )
-    result = await db.execute(query.limit(200))
-    return result.scalars().all()
 
+    # IMPORTANT:
+    # DISTINCT() on full Case rows crashes because
+    # Postgres cannot compare JSON columns.
+    #
+    # So use DISTINCT on primary key only.
+    #
+    query = (
+        query
+        .distinct(Case.id)
+        .order_by(
+            Case.id,
+            desc(Case.updated_at),
+            desc(Case.filed_at),
+        )
+    )
+
+    result = await db.execute(query.limit(200))
+
+    return result.scalars().unique().all()
 
 async def _load_action_plans(
     db: AsyncSession,
