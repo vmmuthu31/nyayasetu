@@ -960,7 +960,7 @@ function ActionButton({
     <button
       disabled={disabled}
       className={cn(
-        "inline-flex h-12 items-center gap-2 rounded-xl px-5 text-sm font-semibold transition",
+        "inline-flex whitespace-nowrap h-12 items-center gap-2 rounded-xl px-5 text-sm font-semibold transition",
         primary
           ? "bg-[#5a43d5] text-white shadow-[0_14px_34px_-18px_rgba(90,67,213,0.85)] hover:brightness-105"
           : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
