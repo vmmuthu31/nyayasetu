@@ -15,7 +15,7 @@ from app.models.base import Case, Directive, CaseStatus, ActionType, User
 from app.routers.deps import get_current_user
 from app.services.audit import append_audit_log
 from app.services.ingestion import storage
-from app.services.ingestion.pdf_extractor import extract_pdf, find_highlight_coords
+from app.services.ingestion.pdf_extractor import extract_docx, extract_pdf, find_highlight_coords
 from app.services.chunking.legal_chunker import extract_directives
 from app.services.llm.extractor import extract_case_entities
 from app.services.action_plan.generator import generate_action_plans
@@ -51,8 +51,11 @@ async def _run_ingestion_pipeline(
       6. PostgreSQL persistence (case + directives with highlight coords)
       7. Immutable audit log entry
     """
-    # Step 1: Extract text + span coordinates (PyMuPDF → Tesseract fallback)
-    extraction = extract_pdf(pdf_bytes)
+    suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    is_docx = suffix == "docx"
+
+    # Step 1: Extract text + span coordinates (PyMuPDF → Tesseract fallback for PDFs)
+    extraction = extract_docx(pdf_bytes) if is_docx else extract_pdf(pdf_bytes)
 
     # Step 2: LLM entity extraction — text only, no raw PDF bytes sent
     llm_result = extract_case_entities(extraction.full_text)
@@ -91,10 +94,15 @@ async def _run_ingestion_pipeline(
 
     action_plans = generate_action_plans(directives_data, judgment_date)
 
-    # Step 5: Store original PDF in S3-compatible storage
-    storage_key = f"pdfs/{llm_result.case_number}/{filename}"
+    # Step 5: Store original document in S3-compatible storage
+    storage_key = f"documents/{llm_result.case_number}/{filename}"
     try:
-        storage.upload_file(storage_key, pdf_bytes, "application/pdf")
+        content_type = (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            if is_docx
+            else "application/pdf"
+        )
+        storage.upload_file(storage_key, pdf_bytes, content_type)
     except Exception:
         storage_key = None  # Degraded mode: proceed without storage
 
@@ -181,13 +189,14 @@ async def ingest_pdf(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are accepted")
+    filename = file.filename or ""
+    if not filename.lower().endswith((".pdf", ".docx")):
+        raise HTTPException(status_code=400, detail="Only PDF and DOCX files are accepted")
 
     pdf_bytes = await file.read()
     result = await _run_ingestion_pipeline(
         pdf_bytes=pdf_bytes,
-        filename=file.filename,
+        filename=filename,
         db=db,
         user_id=current_user.id,
         source="MANUAL_UPLOAD",

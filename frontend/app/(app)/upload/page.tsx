@@ -1,180 +1,385 @@
 "use client";
 
-import { useState, useRef, DragEvent } from "react";
-import { useRouter } from "next/navigation";
-import { Upload, FileText, CheckCircle, AlertTriangle, XCircle, Loader2 } from "lucide-react";
-import { api, IngestResponse } from "@/lib/api";
+import { useCallback, useEffect, useMemo, useRef, useState, DragEvent, type ReactNode } from "react";
+import Link from "next/link";
+import {
+  ChevronLeft,
+  ChevronRight,
+  CloudUpload,
+  FileText,
+  Loader2,
+  RefreshCw,
+  RotateCw,
+  Upload,
+  XCircle,
+} from "lucide-react";
+import { api, CaseListItem, IngestResponse } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 type Stage = "idle" | "uploading" | "done" | "error";
 
+const PAGE_SIZE = 4;
+const MAX_FILE_SIZE = 50 * 1024 * 1024;
+
+const STATUS_STYLES: Record<string, string> = {
+  PENDING_REVIEW: "bg-blue-50 text-blue-700",
+  VERIFIED: "bg-emerald-50 text-emerald-700",
+  ACTIONED: "bg-emerald-50 text-emerald-700",
+  APPEALED: "bg-violet-50 text-violet-700",
+  REJECTED: "bg-rose-50 text-rose-700",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  PENDING_REVIEW: "Processing",
+  VERIFIED: "Completed",
+  ACTIONED: "Completed",
+  APPEALED: "Appealed",
+  REJECTED: "Failed",
+};
+
 export default function UploadPage() {
-  const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [stage, setStage] = useState<Stage>("idle");
   const [result, setResult] = useState<IngestResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [cases, setCases] = useState<CaseListItem[]>([]);
+  const [loadingCases, setLoadingCases] = useState(true);
+  const [page, setPage] = useState(1);
 
-  const handleFile = (f: File) => {
-    if (!f.name.endsWith(".pdf")) { setError("Only PDF files are supported"); return; }
-    setFile(f);
+  const totalPages = Math.max(1, Math.ceil(cases.length / PAGE_SIZE));
+  const visibleCases = useMemo(
+    () => cases.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [cases, page],
+  );
+
+  const loadCases = useCallback(() => {
+    setLoadingCases(true);
+    api.cases
+      .list({ limit: 50 })
+      .then((items) => {
+        setCases(items);
+        setPage(1);
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoadingCases(false));
+  }, []);
+
+  useEffect(() => {
+    void Promise.resolve().then(loadCases);
+  }, [loadCases]);
+
+  const handleFile = (selected: File) => {
+    const lower = selected.name.toLowerCase();
+    if (!lower.endsWith(".pdf") && !lower.endsWith(".docx")) {
+      setError("Only PDF and DOCX files are supported");
+      return;
+    }
+    if (selected.size > MAX_FILE_SIZE) {
+      setError("File size must be 50MB or less");
+      return;
+    }
+
+    setFile(selected);
     setStage("idle");
     setError(null);
     setResult(null);
   };
 
-  const handleDrop = (e: DragEvent) => {
-    e.preventDefault();
+  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
     setDragging(false);
-    const f = e.dataTransfer.files[0];
-    if (f) handleFile(f);
+    const selected = event.dataTransfer.files[0];
+    if (selected) handleFile(selected);
   };
 
-  const handleIngest = async () => {
-    if (!file) return;
+  const handleIngest = async (selectedFile = file) => {
+    if (!selectedFile || stage === "uploading") return;
     setStage("uploading");
     setError(null);
+
     try {
-      const res = await api.ingest.upload(file);
-      setResult(res);
+      const response = await api.ingest.upload(selectedFile);
+      setResult(response);
       setStage("done");
+      loadCases();
     } catch (e: unknown) {
       setError((e as Error).message);
       setStage("error");
     }
   };
 
+  const chooseFile = () => inputRef.current?.click();
+
   return (
-    <div className="p-6 max-w-2xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Ingest Judgment PDF</h1>
-        <p className="text-slate-500 text-sm mt-1">
-          Upload a court judgment PDF. The system will OCR, extract directives, and generate an action plan.
-        </p>
-      </div>
-
-      {/* Drop Zone */}
-      <div
-        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={handleDrop}
-        onClick={() => inputRef.current?.click()}
-        className={cn(
-          "card border-2 border-dashed p-12 flex flex-col items-center justify-center gap-4 cursor-pointer transition-colors",
-          dragging ? "border-blue-500 bg-blue-50" : "border-slate-300 hover:border-blue-400 hover:bg-slate-50"
-        )}
-      >
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".pdf"
-          className="hidden"
-          onChange={(e) => { if (e.target.files?.[0]) handleFile(e.target.files[0]); }}
-        />
-        <Upload className={cn("w-12 h-12", dragging ? "text-blue-500" : "text-slate-300")} />
-        {file ? (
-          <div className="text-center">
-            <div className="flex items-center gap-2 justify-center">
-              <FileText className="w-5 h-5 text-blue-600" />
-              <p className="font-medium text-slate-800">{file.name}</p>
-            </div>
-            <p className="text-xs text-slate-400 mt-1">{(file.size / 1024).toFixed(1)} KB</p>
-          </div>
-        ) : (
-          <div className="text-center">
-            <p className="font-medium text-slate-600">Drop a PDF here or click to browse</p>
-            <p className="text-xs text-slate-400 mt-1">Indian High Court &amp; Supreme Court judgment PDFs supported</p>
-          </div>
-        )}
-      </div>
-
-      {/* Pipeline Steps */}
-      <div className="card p-5">
-        <p className="text-sm font-semibold text-slate-700 mb-4">Processing Pipeline</p>
-        <ol className="space-y-2">
-          {[
-            "PDF Ingestion & OCR (PyMuPDF + Tesseract)",
-            "Legal Chunking & Directive Detection",
-            "LLM Entity Extraction (Claude)",
-            "Action Plan Generation & Timeline Engine",
-            "SHA-256 Audit Log Entry",
-          ].map((step, i) => (
-            <li key={i} className="flex items-center gap-3 text-sm text-slate-600">
-              <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold flex-shrink-0">
-                {i + 1}
-              </span>
-              {step}
-            </li>
-          ))}
-        </ol>
-      </div>
-
-      {/* Action */}
-      {stage !== "done" && (
-        <button
-          disabled={!file || stage === "uploading"}
-          onClick={handleIngest}
-          className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold py-3 rounded-xl transition-colors"
-        >
-          {stage === "uploading" ? (
-            <><Loader2 className="w-5 h-5 animate-spin" /> Processing…</>
-          ) : (
-            <><Upload className="w-5 h-5" /> Ingest & Process</>
-          )}
-        </button>
-      )}
-
-      {/* Error */}
-      {stage === "error" && error && (
-        <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
-          <XCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+    <main className="h-full overflow-y-auto bg-white">
+      <div className="mx-auto flex min-h-full w-full max-w-[980px] flex-col px-8 py-8">
+        <header className="mb-8 flex items-start justify-between gap-6">
           <div>
-            <p className="font-semibold">Ingestion failed</p>
-            <p>{error}</p>
+            <h1 className="text-[28px] font-semibold leading-tight text-slate-950">New Ingestion</h1>
+            <p className="mt-3 text-[15px] text-slate-500">
+              Upload court judgments and extract actionable insights.
+            </p>
           </div>
-        </div>
-      )}
-
-      {/* Result */}
-      {stage === "done" && result && (
-        <div className="card p-6 space-y-4">
-          <div className="flex items-center gap-3">
-            <CheckCircle className="w-6 h-6 text-emerald-600" />
-            <div>
-              <p className="font-semibold text-slate-900">{result.message}</p>
-              <p className="text-sm text-slate-500">Case: {result.case_number}</p>
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <Metric label="Directives Found" value={result.directive_count} />
-            <Metric label="Quality Score" value={`${Math.round(result.quality_score * 100)}%`} />
-            <Metric label="Needs Review" value={result.ambiguous_count} warn={result.ambiguous_count > 0} />
-          </div>
-          {result.ambiguous_count > 0 && (
-            <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
-              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-              {result.ambiguous_count} directive{result.ambiguous_count > 1 ? "s" : ""} flagged for human review
-            </div>
-          )}
           <button
-            onClick={() => router.push(`/cases/${result.case_id}/review`)}
-            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-lg transition-colors text-sm"
+            type="button"
+            onClick={() => file ? handleIngest(file) : chooseFile()}
+            disabled={stage === "uploading"}
+            className="inline-flex h-12 items-center gap-2 rounded-md bg-indigo-600 px-5 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(79,70,229,0.28)] transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Open Review →
+            {stage === "uploading" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            Upload Document
           </button>
-        </div>
-      )}
+        </header>
+
+        <section
+          onDragOver={(event) => {
+            event.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={handleDrop}
+          className={cn(
+            "flex min-h-[246px] flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 text-center transition",
+            dragging ? "border-indigo-500 bg-indigo-50/40" : "border-slate-200 bg-white",
+          )}
+        >
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            className="hidden"
+            onChange={(event) => {
+              const selected = event.target.files?.[0];
+              if (selected) handleFile(selected);
+            }}
+          />
+          <CloudUpload className="h-12 w-12 stroke-[1.8] text-indigo-600" />
+          <h2 className="mt-5 text-[17px] font-semibold text-slate-900">
+            {file ? file.name : "Drag and drop your files here"}
+          </h2>
+          <p className="mt-2 text-sm text-slate-400">
+            {file ? formatFileSize(file.size) : "Supports PDF, DOCX - Max 50MB"}
+          </p>
+          <button
+            type="button"
+            onClick={chooseFile}
+            className="mt-5 inline-flex h-11 items-center justify-center rounded-md border border-indigo-100 bg-white px-6 text-sm font-semibold text-indigo-600 shadow-sm transition hover:border-indigo-200 hover:bg-indigo-50"
+          >
+            Browse Files
+          </button>
+          {file && stage !== "uploading" && (
+            <button
+              type="button"
+              onClick={() => handleIngest(file)}
+              className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-indigo-600"
+            >
+              <FileText className="h-4 w-4" />
+              Start ingestion
+            </button>
+          )}
+        </section>
+
+        {stage === "uploading" && (
+          <StatusMessage tone="blue" icon={<Loader2 className="h-5 w-5 animate-spin" />}>
+            Processing {file?.name}. This may take a moment while the backend extracts directives.
+          </StatusMessage>
+        )}
+
+        {stage === "error" && error && (
+          <StatusMessage tone="red" icon={<XCircle className="h-5 w-5" />}>
+            {error}
+          </StatusMessage>
+        )}
+
+        {stage === "done" && result && (
+          <StatusMessage tone="green" icon={<FileText className="h-5 w-5" />}>
+            {result.case_number} ingested with {result.directive_count} directive
+            {result.directive_count === 1 ? "" : "s"}.{" "}
+            <Link href={`/cases/${result.case_id}/review`} className="font-semibold underline-offset-2 hover:underline">
+              Open review
+            </Link>
+          </StatusMessage>
+        )}
+
+        <section className="mt-8">
+          <div className="mb-5 flex items-center justify-between">
+            <h2 className="text-[20px] font-semibold text-slate-950">Recent Ingestions</h2>
+            <button
+              type="button"
+              onClick={loadCases}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-50 hover:text-indigo-600"
+              aria-label="Refresh recent ingestions"
+            >
+              <RefreshCw className={cn("h-4 w-4", loadingCases && "animate-spin")} />
+            </button>
+          </div>
+
+          <div className="overflow-hidden rounded-md border border-slate-100 bg-white">
+            <table className="w-full table-fixed text-left">
+              <thead>
+                <tr className="border-b border-slate-100 bg-white">
+                  {["Title", "Uploaded By", "Uploaded On", "Status", "Actions"].map((heading) => (
+                    <th
+                      key={heading}
+                      className="px-4 py-4 text-[11px] font-bold uppercase tracking-wide text-slate-500"
+                    >
+                      {heading}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {loadingCases ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-12 text-center text-sm text-slate-400">
+                      Loading recent ingestions...
+                    </td>
+                  </tr>
+                ) : visibleCases.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-12 text-center text-sm text-slate-400">
+                      No ingestions yet
+                    </td>
+                  </tr>
+                ) : (
+                  visibleCases.map((item) => (
+                    <tr key={item.id} className="text-sm text-slate-600">
+                      <td className="w-[34%] truncate px-4 py-4 font-medium text-slate-700">
+                        {caseTitle(item)}
+                      </td>
+                      <td className="w-[22%] truncate px-4 py-4">{uploadedBy(item)}</td>
+                      <td className="w-[18%] px-4 py-4">{formatShortDate(item.filed_at)}</td>
+                      <td className="w-[16%] px-4 py-4">
+                        <span
+                          className={cn(
+                            "inline-flex rounded-md px-3 py-1 text-xs font-semibold",
+                            STATUS_STYLES[item.status] ?? "bg-slate-100 text-slate-700",
+                          )}
+                        >
+                          {STATUS_LABELS[item.status] ?? item.status}
+                        </span>
+                      </td>
+                      <td className="w-[10%] px-4 py-4">
+                        <Link
+                          href={`/cases/${item.id}/review`}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-50 hover:text-indigo-600"
+                          aria-label={`Open ${item.case_number}`}
+                        >
+                          <RotateCw className="h-4 w-4" />
+                        </Link>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mt-6 flex items-center justify-between text-sm text-slate-500">
+            <p>
+              Showing {cases.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1} to{" "}
+              {Math.min(page * PAGE_SIZE, cases.length)} of {cases.length}
+            </p>
+            <div className="flex items-center gap-2">
+              <PageButton disabled={page === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
+                <ChevronLeft className="h-4 w-4" />
+              </PageButton>
+              {Array.from({ length: totalPages }, (_, index) => index + 1)
+                .slice(0, 3)
+                .map((pageNumber) => (
+                  <PageButton
+                    key={pageNumber}
+                    active={pageNumber === page}
+                    onClick={() => setPage(pageNumber)}
+                  >
+                    {pageNumber}
+                  </PageButton>
+                ))}
+              <PageButton
+                disabled={page === totalPages}
+                onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </PageButton>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function StatusMessage({
+  children,
+  icon,
+  tone,
+}: {
+  children: ReactNode;
+  icon: ReactNode;
+  tone: "blue" | "green" | "red";
+}) {
+  const styles = {
+    blue: "border-blue-100 bg-blue-50 text-blue-700",
+    green: "border-emerald-100 bg-emerald-50 text-emerald-700",
+    red: "border-rose-100 bg-rose-50 text-rose-700",
+  };
+
+  return (
+    <div className={cn("mt-5 flex items-start gap-3 rounded-md border px-4 py-3 text-sm", styles[tone])}>
+      {icon}
+      <p>{children}</p>
     </div>
   );
 }
 
-function Metric({ label, value, warn }: { label: string; value: number | string; warn?: boolean }) {
+function PageButton({
+  active,
+  children,
+  disabled,
+  onClick,
+}: {
+  active?: boolean;
+  children: ReactNode;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
   return (
-    <div className={cn("rounded-lg p-3 text-center", warn ? "bg-amber-50" : "bg-slate-50")}>
-      <p className={cn("text-xl font-bold", warn ? "text-amber-700" : "text-slate-900")}>{value}</p>
-      <p className="text-xs text-slate-500 mt-0.5">{label}</p>
-    </div>
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "flex h-10 min-w-10 items-center justify-center rounded-md border border-transparent px-3 text-sm font-semibold text-slate-500 transition",
+        active && "border-indigo-100 text-indigo-600 shadow-sm",
+        disabled ? "cursor-not-allowed opacity-40" : "hover:border-slate-100 hover:bg-slate-50",
+      )}
+    >
+      {children}
+    </button>
   );
+}
+
+function caseTitle(item: CaseListItem) {
+  if (item.petitioners && item.petitioners !== "Unknown") return item.petitioners;
+  return item.case_number;
+}
+
+function uploadedBy(item: CaseListItem) {
+  const court = item.court?.replace("Court — pending review", "").trim();
+  return court || "Manual Upload";
+}
+
+function formatShortDate(value: string) {
+  return new Date(value).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

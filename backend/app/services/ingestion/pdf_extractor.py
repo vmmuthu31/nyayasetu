@@ -6,6 +6,9 @@ Ingestion Layer:
 """
 import hashlib
 from dataclasses import dataclass, field
+from io import BytesIO
+from zipfile import ZipFile
+import xml.etree.ElementTree as ET
 
 import fitz  # PyMuPDF
 import pytesseract
@@ -123,6 +126,40 @@ def extract_pdf(pdf_bytes: bytes) -> ExtractionResult:
         fingerprint=fingerprint,
         overall_quality=round(overall_quality, 3),
         all_spans=all_spans,
+    )
+
+
+def extract_docx(docx_bytes: bytes) -> ExtractionResult:
+    """
+    Extract plain text from DOCX using the zipped WordprocessingML document.
+    DOCX files do not provide PDF-style coordinates, so highlight spans are empty.
+    """
+    paragraphs: list[str] = []
+    with ZipFile(BytesIO(docx_bytes)) as archive:
+        with archive.open("word/document.xml") as document_xml:
+            root = ET.fromstring(document_xml.read())
+
+    ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+    for paragraph in root.findall(".//w:p", ns):
+        text = "".join(node.text or "" for node in paragraph.findall(".//w:t", ns)).strip()
+        if text:
+            paragraphs.append(text)
+
+    full_text = "\n\n".join(paragraphs)
+    page = PageResult(
+        page_number=1,
+        text=full_text,
+        quality_score=1.0 if full_text else 0.0,
+        is_scanned=False,
+        spans=[],
+    )
+
+    return ExtractionResult(
+        pages=[page],
+        full_text=full_text,
+        fingerprint=hashlib.sha256(full_text.encode()).hexdigest(),
+        overall_quality=1.0 if full_text else 0.0,
+        all_spans=[],
     )
 
 
