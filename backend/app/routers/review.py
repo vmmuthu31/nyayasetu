@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from app.core.database import get_db
 from app.models.base import Case, Directive, CaseAction, CaseStatus, ActionType, User
-from app.routers.deps import get_current_user
+from app.routers.deps import require_reviewer_or_admin
 from app.services.audit import append_audit_log
 
 router = APIRouter(prefix="/review", tags=["review"])
@@ -33,7 +33,7 @@ async def review_directive(
     directive_id: str,
     body: ReviewDecision,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_reviewer_or_admin),
 ):
     result = await db.execute(select(Directive).where(Directive.id == directive_id))
     directive = result.scalar_one_or_none()
@@ -114,7 +114,7 @@ async def update_case_status(
     case_id: str,
     body: dict,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_reviewer_or_admin),
 ):
     result = await db.execute(select(Case).where(Case.id == case_id))
     case = result.scalar_one_or_none()
