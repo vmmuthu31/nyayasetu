@@ -1,155 +1,299 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Search, Upload, RefreshCw } from "lucide-react";
-import { api, CaseListItem } from "@/lib/api";
-import { Badge } from "@/components/ui/Badge";
-import { formatDate } from "@/lib/utils";
+import { ChevronDown, ChevronLeft, ChevronRight, Loader2, Search } from "lucide-react";
+import { api, CaseDetail, CaseListItem } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
-const STATUS_OPTIONS = [
-  { value: "", label: "All Statuses" },
-  { value: "PENDING_REVIEW", label: "Pending Review" },
-  { value: "VERIFIED", label: "Verified" },
-  { value: "ACTIONED", label: "Actioned" },
-  { value: "APPEALED", label: "Appealed" },
-  { value: "REJECTED", label: "Rejected" },
-];
+const PAGE_SIZE = 5;
+
+type ReviewCase = CaseListItem & {
+  department: string;
+  priority: "High" | "Medium" | "Low";
+};
+
+const PRIORITY_STYLES: Record<ReviewCase["priority"], string> = {
+  High: "bg-rose-50 text-rose-600",
+  Medium: "bg-amber-50 text-amber-600",
+  Low: "bg-emerald-50 text-emerald-600",
+};
 
 export default function CasesPage() {
-  const [cases, setCases] = useState<CaseListItem[]>([]);
+  const [cases, setCases] = useState<ReviewCase[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("");
+  const [department, setDepartment] = useState("");
+  const [priority, setPriority] = useState("");
+  const [page, setPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
     api.cases
-      .list({ search: search || undefined, status: status || undefined })
-      .then(setCases)
+      .list({ status: "PENDING_REVIEW", limit: 100 })
+      .then(async (items) => {
+        const enriched = await Promise.all(
+          items.map(async (item) => {
+            const detail = await api.cases.get(item.id).catch(() => null);
+            return toReviewCase(item, detail);
+          }),
+        );
+        setCases(enriched);
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [search, status]);
+  }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    void Promise.resolve().then(load);
+  }, [load]);
+
+  const departments = useMemo(
+    () => Array.from(new Set(cases.map((item) => item.department))).filter(Boolean).sort(),
+    [cases],
+  );
+
+  const filteredCases = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return cases.filter((item) => {
+      const matchesSearch =
+        !needle ||
+        item.case_number.toLowerCase().includes(needle) ||
+        item.petitioners.toLowerCase().includes(needle) ||
+        item.court.toLowerCase().includes(needle);
+      const matchesDepartment = !department || item.department === department;
+      const matchesPriority = !priority || item.priority === priority;
+      return matchesSearch && matchesDepartment && matchesPriority;
+    });
+  }, [cases, department, priority, search]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredCases.length / PAGE_SIZE));
+  const visibleCases = filteredCases.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Cases</h1>
-          <p className="text-slate-500 text-sm mt-0.5">{cases.length} case{cases.length !== 1 ? "s" : ""} found</p>
-        </div>
-        <Link
-          href="/upload"
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-        >
-          <Upload className="w-4 h-4" /> Ingest PDF
-        </Link>
-      </div>
+    <main className="h-full overflow-y-auto bg-white">
+      <div className="mx-auto flex min-h-full w-full max-w-[1040px] flex-col px-8 py-8">
+        <header>
+          <h1 className="text-[28px] font-semibold leading-tight text-slate-950">Pending Review</h1>
+          <p className="mt-3 text-[15px] text-slate-500">
+            Review and verify extracted directives from ingested judgments.
+          </p>
+        </header>
 
-      {/* Filters */}
-      <div className="card p-4 flex flex-wrap gap-3">
-        <div className="relative flex-1 min-w-52">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search case number or petitioner…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-          className="text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-        >
-          {STATUS_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-        <button
-          onClick={load}
-          className="flex items-center gap-1.5 text-sm text-slate-600 border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50"
-        >
-          <RefreshCw className="w-3.5 h-3.5" /> Refresh
-        </button>
-      </div>
-
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{error}</div>
-      )}
-
-      {/* Table */}
-      <div className="card overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 border-b border-slate-200">
-            <tr>
-              {["Case No.", "Court", "Petitioners", "Directives", "Confidence", "Status", "Filed", ""].map((h) => (
-                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                  {h}
-                </th>
+        <section className="mt-10 grid grid-cols-[minmax(190px,290px)_minmax(170px,235px)_1fr] gap-4">
+          <SelectShell value={department || "All Departments"}>
+            <select
+              value={department}
+              onChange={(event) => {
+                setDepartment(event.target.value);
+                setPage(1);
+              }}
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              aria-label="Filter by department"
+            >
+              <option value="">All Departments</option>
+              {departments.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
               ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {loading ? (
-              <tr>
-                <td colSpan={8} className="px-4 py-10 text-center text-slate-400">
-                  <div className="flex items-center justify-center gap-2">
-                    <RefreshCw className="w-4 h-4 animate-spin" /> Loading…
-                  </div>
-                </td>
-              </tr>
-            ) : cases.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="px-4 py-10 text-center text-slate-400">No cases found</td>
-              </tr>
-            ) : (
-              cases.map((c) => (
-                <tr key={c.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3 font-mono font-medium text-blue-700">{c.case_number}</td>
-                  <td className="px-4 py-3 text-slate-700 max-w-32 truncate">{c.court}</td>
-                  <td className="px-4 py-3 text-slate-700 max-w-40 truncate">{c.petitioners}</td>
-                  <td className="px-4 py-3 text-center">
-                    <span className="font-semibold text-slate-800">{c.directive_count}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <ConfidenceBar value={c.confidence_score} />
-                  </td>
-                  <td className="px-4 py-3"><Badge value={c.status} /></td>
-                  <td className="px-4 py-3 text-slate-500">{formatDate(c.filed_at)}</td>
-                  <td className="px-4 py-3">
-                    <Link
-                      href={`/cases/${c.id}/review`}
-                      className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline"
+            </select>
+          </SelectShell>
+
+          <SelectShell value={priority || "All Priorities"}>
+            <select
+              value={priority}
+              onChange={(event) => {
+                setPriority(event.target.value);
+                setPage(1);
+              }}
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              aria-label="Filter by priority"
+            >
+              <option value="">All Priorities</option>
+              <option value="High">High</option>
+              <option value="Medium">Medium</option>
+              <option value="Low">Low</option>
+            </select>
+          </SelectShell>
+
+          <div className="relative h-[52px] rounded-md border border-slate-200 bg-white shadow-sm">
+            <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+            <input
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(1);
+              }}
+              placeholder="Search by title or case no."
+              className="h-full w-full rounded-md bg-transparent pl-12 pr-4 text-sm font-medium text-slate-700 outline-none placeholder:text-slate-400"
+            />
+          </div>
+        </section>
+
+        {error && (
+          <div className="mt-5 rounded-md border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {error}
+          </div>
+        )}
+
+        <section className="mt-8 overflow-hidden bg-white">
+          <table className="w-full table-fixed text-left">
+            <thead>
+              <tr className="border-b border-slate-100">
+                {["CASE TITLE / COURT", "DEPARTMENT", "DIRECTIVES", "INGESTED ON", "PRIORITY", "ACTIONS"].map(
+                  (heading) => (
+                    <th
+                      key={heading}
+                      className="px-4 py-4 text-xs font-bold uppercase tracking-wide text-slate-500"
                     >
-                      Review →
-                    </Link>
+                      {heading}
+                    </th>
+                  ),
+                )}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-16 text-center text-sm text-slate-400">
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading pending reviews
+                    </span>
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : visibleCases.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-16 text-center text-sm text-slate-400">
+                    No pending reviews found
+                  </td>
+                </tr>
+              ) : (
+                visibleCases.map((item) => (
+                  <tr key={item.id} className="text-sm text-slate-600">
+                    <td className="w-[34%] px-4 py-5">
+                      <p className="truncate text-[15px] font-semibold text-slate-900">{caseTitle(item)}</p>
+                      <p className="mt-1 truncate text-sm font-medium text-slate-500">{item.court}</p>
+                    </td>
+                    <td className="w-[20%] px-4 py-5 font-medium text-slate-700">{item.department}</td>
+                    <td className="w-[12%] px-4 py-5 font-semibold text-slate-700">{item.directive_count}</td>
+                    <td className="w-[16%] px-4 py-5 font-medium text-slate-500">{formatShortDate(item.filed_at)}</td>
+                    <td className="w-[10%] px-4 py-5">
+                      <span className={cn("rounded-md px-3 py-1 text-xs font-bold", PRIORITY_STYLES[item.priority])}>
+                        {item.priority}
+                      </span>
+                    </td>
+                    <td className="w-[8%] px-4 py-5">
+                      <Link
+                        href={`/cases/${item.id}/review`}
+                        className="inline-flex h-9 items-center justify-center rounded-md border border-slate-100 bg-white px-3 text-sm font-bold text-indigo-600 shadow-sm transition hover:border-indigo-100 hover:bg-indigo-50"
+                      >
+                        Review
+                      </Link>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </section>
+
+        <footer className="mt-7 flex items-center justify-between text-sm text-slate-500">
+          <p>
+            Showing {filteredCases.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1} to{" "}
+            {Math.min(page * PAGE_SIZE, filteredCases.length)} of {filteredCases.length}
+          </p>
+          <div className="flex items-center gap-2">
+            <PageButton disabled={page === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
+              <ChevronLeft className="h-4 w-4" />
+            </PageButton>
+            {Array.from({ length: Math.min(totalPages, 4) }, (_, index) => index + 1).map((pageNumber) => (
+              <PageButton key={pageNumber} active={pageNumber === page} onClick={() => setPage(pageNumber)}>
+                {pageNumber}
+              </PageButton>
+            ))}
+            <PageButton disabled={page === totalPages} onClick={() => setPage((value) => Math.min(totalPages, value + 1))}>
+              <ChevronRight className="h-4 w-4" />
+            </PageButton>
+          </div>
+        </footer>
       </div>
+    </main>
+  );
+}
+
+function SelectShell({ children, value }: { children: React.ReactNode; value: string }) {
+  return (
+    <div className="relative flex h-[52px] items-center justify-between rounded-md border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 shadow-sm">
+      <span className="truncate">{value}</span>
+      <ChevronDown className="h-4 w-4 text-slate-400" />
+      {children}
     </div>
   );
 }
 
-function ConfidenceBar({ value }: { value: number }) {
-  const pct = Math.round(value * 100);
-  const color = pct >= 75 ? "bg-emerald-500" : pct >= 50 ? "bg-amber-400" : "bg-red-400";
+function PageButton({
+  active,
+  children,
+  disabled,
+  onClick,
+}: {
+  active?: boolean;
+  children: React.ReactNode;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
   return (
-    <div className="flex items-center gap-2">
-      <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
-      </div>
-      <span className="text-xs text-slate-500">{pct}%</span>
-    </div>
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "flex h-10 min-w-10 items-center justify-center rounded-md border border-transparent px-3 text-sm font-semibold text-slate-500 transition",
+        active && "border-indigo-100 text-indigo-600 shadow-sm",
+        disabled ? "cursor-not-allowed opacity-40" : "hover:border-slate-100 hover:bg-slate-50",
+      )}
+    >
+      {children}
+    </button>
   );
+}
+
+function toReviewCase(item: CaseListItem, detail: CaseDetail | null): ReviewCase {
+  const firstDepartment = detail?.directives.find((directive) => directive.department)?.department;
+  return {
+    ...item,
+    department: firstDepartment || departmentFromCourt(item.court),
+    priority: getPriority(item),
+  };
+}
+
+function getPriority(item: CaseListItem): ReviewCase["priority"] {
+  if (item.confidence_score < 0.55 || item.directive_count >= 7) return "High";
+  if (item.confidence_score < 0.78 || item.directive_count >= 4) return "Medium";
+  return "Low";
+}
+
+function departmentFromCourt(court: string) {
+  if (/municipal|urban|bombay/i.test(court)) return "Urban Development";
+  if (/finance|tax|revenue/i.test(court)) return "Revenue Department";
+  if (/supreme|union/i.test(court)) return "Finance Department";
+  if (/home|criminal|police/i.test(court)) return "Home Department";
+  return "Law Department";
+}
+
+function caseTitle(item: CaseListItem) {
+  if (item.petitioners && item.petitioners !== "Unknown") return item.petitioners;
+  return item.case_number;
+}
+
+function formatShortDate(value: string) {
+  return new Date(value).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
