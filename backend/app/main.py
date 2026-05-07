@@ -7,6 +7,7 @@ from app.core.catalog import seed_departments
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, engine
 from app.models.base import Base
+from app.services.ingestion import storage as s3_storage
 from app.routers import auth, cases, ingest, review, audit, departments, ccms, admin, action_plans, reports, dashboard
 
 
@@ -38,6 +39,13 @@ async def lifespan(app: FastAPI):
             await conn.execute(__import__("sqlalchemy").text(sql))
     async with AsyncSessionLocal() as session:
         await seed_departments(session)
+    # Ensure S3 bucket exists (MinIO) so uploads don't fail with NoSuchBucket
+    try:
+        s3_storage.ensure_bucket()
+    except Exception:
+        # Log but don't fail startup; uploads will gracefully degrade
+        import logging
+        logging.getLogger(__name__).warning("Failed to ensure S3 bucket exists on startup")
     yield
 
 
