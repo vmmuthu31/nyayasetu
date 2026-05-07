@@ -19,11 +19,6 @@ export default function ActionPlanDetailPage() {
   const [completionNotes, setCompletionNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!params.id) return;
-    void loadPlan(params.id);
-  }, [params.id]);
-
   async function loadPlan(id: string) {
     setLoading(true);
     setError(null);
@@ -38,6 +33,12 @@ export default function ActionPlanDetailPage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (!params.id) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadPlan(params.id);
+  }, [params.id]);
 
   async function updateStatus(status: "IN_PROGRESS" | "ESCALATED") {
     if (!plan) return;

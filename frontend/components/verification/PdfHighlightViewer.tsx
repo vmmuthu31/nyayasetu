@@ -9,7 +9,7 @@
  * with any display size.
  */
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { ExternalLink, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
 

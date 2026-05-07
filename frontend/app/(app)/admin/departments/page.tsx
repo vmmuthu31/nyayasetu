@@ -112,10 +112,15 @@ export default function AdminDepartmentsPage() {
     setSaving(true);
     setError(null);
     try {
+      const payload: DepartmentUpsert = {
+        name: form.name.trim(),
+        code: form.code.trim().toUpperCase(),
+        email: form.email?.trim() ? form.email.trim() : undefined,
+      };
       if (editingDepartment) {
-        await api.admin.updateDepartment(editingDepartment.id, form);
+        await api.admin.updateDepartment(editingDepartment.id, payload);
       } else {
-        await api.admin.createDepartment(form);
+        await api.admin.createDepartment(payload);
       }
       setIsModalOpen(false);
       setEditingDepartment(null);

@@ -55,7 +55,19 @@ export default function AuditPage() {
   }, []);
 
   const actionOptions = useMemo(
-    () => Array.from(new Set(logs.map((item) => item.actionLabel))).filter(Boolean).sort(),
+    () =>
+      Array.from(
+        new Set([
+          "Uploaded Document",
+          "Verified Directive",
+          "Rejected Directive",
+          "Updated Action",
+          "User Login",
+          ...logs.map((item) => item.actionLabel),
+        ]),
+      )
+        .filter(Boolean)
+        .sort(),
     [logs],
   );
 

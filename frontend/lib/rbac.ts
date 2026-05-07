@@ -65,6 +65,8 @@ const ROUTE_ACCESS: Array<{ match: (pathname: string) => boolean; roles: AppRole
   { match: (pathname) => pathname === "/verified", roles: ["ADMIN", "REVIEWER", "DEPT_USER"] },
   { match: (pathname) => pathname === "/calendar", roles: ["ADMIN", "REVIEWER", "DEPT_USER"] },
   { match: (pathname) => pathname === "/departments", roles: ["ADMIN", "DEPT_USER"] },
+  { match: (pathname) => pathname === "/department/action-plans", roles: ["ADMIN", "DEPT_USER"] },
+  { match: (pathname) => pathname.startsWith("/action-plan/"), roles: ["ADMIN", "REVIEWER", "DEPT_USER"] },
   { match: (pathname) => pathname === "/audit", roles: ["ADMIN", "REVIEWER"] },
   { match: (pathname) => pathname === "/downloads", roles: ["ADMIN", "REVIEWER", "DEPT_USER"] },
   { match: (pathname) => pathname === "/reports", roles: ["ADMIN", "REVIEWER"] },

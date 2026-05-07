@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Loader2, Search } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Loader2, Search } from "lucide-react";
 import { ActionPlan, api, CaseDetail, CaseListItem } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useDepartmentOptions } from "@/lib/use-department-options";
