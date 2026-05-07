@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ChevronDown, ChevronLeft, ChevronRight, Loader2, Search } from "lucide-react";
 import { api, CaseDetail, CaseListItem } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useDepartmentOptions } from "@/lib/use-department-options";
 
 const PAGE_SIZE = 5;
 
@@ -50,10 +51,11 @@ export default function CasesPage() {
     void Promise.resolve().then(load);
   }, [load]);
 
-  const departments = useMemo(
+  const liveDepartments = useMemo(
     () => Array.from(new Set(cases.map((item) => item.department))).filter(Boolean).sort(),
     [cases],
   );
+  const departments = useDepartmentOptions(liveDepartments);
 
   const filteredCases = useMemo(() => {
     const needle = search.trim().toLowerCase();

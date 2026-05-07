@@ -6,6 +6,7 @@ import { api, AuditEntry, CaseDetail, CaseListItem } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { can } from "@/lib/rbac";
+import { useDepartmentOptions } from "@/lib/use-department-options";
 
 const PAGE_SIZE = 5;
 
@@ -56,7 +57,7 @@ export default function DownloadsPage() {
     });
   }, [user]);
 
-  const departments = useMemo(
+  const liveDepartments = useMemo(
     () =>
       Array.from(
         new Set(
@@ -67,6 +68,7 @@ export default function DownloadsPage() {
       ).sort(),
     [cases, details],
   );
+  const departments = useDepartmentOptions(liveDepartments);
 
   const items = useMemo(
     () => buildDownloadItems(tab, cases, details, auditLogs),

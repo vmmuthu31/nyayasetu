@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -11,77 +11,14 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
-
-/* ─── Static data ────────────────────────────────────────────── */
-
-const ALL_STATES = [
-  "Andhra Pradesh","Arunachal Pradesh","Assam","Bihar","Chhattisgarh",
-  "Goa","Gujarat","Haryana","Himachal Pradesh","Jharkhand","Karnataka",
-  "Kerala","Madhya Pradesh","Maharashtra","Manipur","Meghalaya","Mizoram",
-  "Nagaland","Odisha","Punjab","Rajasthan","Sikkim","Tamil Nadu","Telangana",
-  "Tripura","Uttar Pradesh","Uttarakhand","West Bengal",
-  // Union Territories
-  "Andaman & Nicobar Islands","Chandigarh","Dadra & Nagar Haveli and Daman & Diu",
-  "Delhi (NCT)","Jammu & Kashmir","Ladakh","Lakshadweep","Puducherry",
-];
-
-const ALL_DEPARTMENTS = [
-  "Agriculture Department","Animal Husbandry & Dairying","Civil Aviation",
-  "Coal Ministry","Commerce & Industry","Consumer Affairs","Cooperation",
-  "Culture Department","Defence Department","Disaster Management",
-  "Education Department","Election Commission","Environment & Climate",
-  "Finance Department","Fisheries Department","Food & Public Distribution",
-  "Forest Department","General Administration","Health & Family Welfare",
-  "Higher Education","Home Department","Horticulture Department",
-  "Housing & Urban Affairs","Information & Broadcasting","Irrigation Department",
-  "IT & Electronics","Jal Shakti / Water Resources","Labour & Employment",
-  "Law Department","Micro, Small & Medium Enterprises","Mines Department",
-  "New & Renewable Energy","Personnel & Training","Petroleum & Natural Gas",
-  "Planning & Statistics","Ports, Shipping & Waterways","Power Department",
-  "Public Works Department","Railways","Revenue Department",
-  "Road Transport & Highways","Rural Development","Science & Technology",
-  "Skill Development","Social Justice & Empowerment","Steel Department",
-  "Textile Department","Tourism Department","Tribal Affairs",
-  "Urban Development","Women & Child Development","Youth Affairs & Sports",
-];
-
-const ALL_DESIGNATIONS = [
-  "Additional Collector","Additional Commissioner","Additional Director",
-  "Additional Secretary","Assistant Collector","Assistant Commissioner",
-  "Assistant Director","Block Development Officer (BDO)",
-  "Chief Secretary","Chief Medical Officer (CMO)","Collector",
-  "Commissioner","Deputy Collector","Deputy Commissioner",
-  "Deputy Director","Deputy Secretary","Director",
-  "District Development Officer","District Judge","District Magistrate",
-  "Inspector General (IG)","Joint Collector","Joint Commissioner",
-  "Joint Director","Joint Secretary","Judicial Magistrate",
-  "Municipal Commissioner","Principal Secretary","Secretary",
-  "Special Officer","Superintendent of Police (SP)","Tahsildar",
-  "Under Secretary",
-];
-
-const ROLES = [
-  {
-    key: "REVIEWER",
-    label: "Reviewer",
-    desc: "Reviews and approves extracted directives",
-    color: "indigo",
-  },
-  {
-    key: "DEPT_USER",
-    label: "Dept. User",
-    desc: "Views department action plans",
-    color: "violet",
-  },
-  {
-    key: "ADMIN",
-    label: "Admin",
-    desc: "Full system access and user management",
-    color: "amber",
-  },
-] as const;
-
-type RoleKey = (typeof ROLES)[number]["key"];
+import { api, type RoleOption } from "@/lib/api";
+import {
+  ALL_DEPARTMENTS,
+  ALL_DESIGNATIONS,
+  ALL_STATES,
+  ROLES,
+  type RoleKey,
+} from "@/lib/gov-catalog";
 
 /* ─── Password strength ──────────────────────────────────────── */
 
@@ -105,6 +42,8 @@ export default function RegisterPage() {
   const router = useRouter();
   const { register } = useAuth();
 
+  const [roleOptions, setRoleOptions] = useState<readonly RoleOption[]>(ROLES);
+  const [departmentOptions, setDepartmentOptions] = useState<string[]>([...ALL_DEPARTMENTS]);
   const [role, setRole] = useState<RoleKey>("REVIEWER");
   const [form, setForm] = useState({
     name: "", email: "", mobile: "", designation: "",
@@ -130,6 +69,22 @@ export default function RegisterPage() {
   const pwdStrength = passwordStrength(form.password);
   const pwdMatch = form.confirmPassword !== "" && form.password === form.confirmPassword;
   const pwdValid = Object.values(pwdRules).every(Boolean);
+
+  useEffect(() => {
+    void Promise.resolve().then(async () => {
+      try {
+        const options = await api.auth.options();
+        if (options.roles.length > 0) {
+          setRoleOptions(options.roles);
+        }
+        if (options.departments.length > 0) {
+          setDepartmentOptions(options.departments.map((department) => department.name));
+        }
+      } catch {
+        // Keep frontend fallbacks when the catalog API is unavailable.
+      }
+    });
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -249,14 +204,19 @@ export default function RegisterPage() {
             {/* ── ROLE SELECTION ── */}
             <Section title="Select Your Role">
               <div className="grid grid-cols-3 gap-3">
-                {ROLES.map((r) => {
+                {roleOptions.map((r) => {
                   const selected = role === r.key;
+                  const roleColor = {
+                    REVIEWER: "indigo",
+                    DEPT_USER: "violet",
+                    ADMIN: "amber",
+                  }[r.key];
                   const colorMap: Record<string, { ring: string; bg: string; text: string; check: string }> = {
                     indigo: { ring: "ring-indigo-500 border-indigo-400", bg: "bg-indigo-50", text: "text-indigo-700", check: "text-indigo-500" },
                     violet: { ring: "ring-violet-500 border-violet-400", bg: "bg-violet-50", text: "text-violet-700", check: "text-violet-500" },
                     amber:  { ring: "ring-amber-500 border-amber-400",   bg: "bg-amber-50",   text: "text-amber-700",  check: "text-amber-500"  },
                   };
-                  const c = colorMap[r.color];
+                  const c = colorMap[roleColor];
                   return (
                     <button
                       key={r.key}
@@ -339,7 +299,7 @@ export default function RegisterPage() {
                   <SelectInput icon={Building2}>
                     <select required value={form.department} onChange={set("department")} className={select}>
                       <option value="" disabled>Select department</option>
-                      {ALL_DEPARTMENTS.map((d) => <option key={d} value={d}>{d}</option>)}
+                      {departmentOptions.map((d) => <option key={d} value={d}>{d}</option>)}
                     </select>
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                   </SelectInput>

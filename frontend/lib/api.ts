@@ -7,11 +7,12 @@ function getToken(): string | null {
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getToken();
+  const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: {
-      "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(init.headers ?? {}),
     },
   });
@@ -41,6 +42,7 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ email, password }),
       }),
+    options: () => request<RegisterOptions>("/auth/options"),
     register: (data: RegisterData) =>
       request<{ access_token: string; user: User }>("/auth/register", {
         method: "POST",
@@ -104,6 +106,45 @@ export const api = {
       request<DeptAction[]>(`/departments/actions?department=${encodeURIComponent(department)}`),
   },
 
+  actionPlans: {
+    myDepartment: (params?: { department?: string; status?: string; limit?: number }) => {
+      const q = new URLSearchParams(params as Record<string, string>).toString();
+      return request<ActionPlan[]>(`/action-plans/my-department${q ? `?${q}` : ""}`);
+    },
+    byCase: (caseId: string) => request<ActionPlan[]>(`/action-plans/case/${caseId}`),
+    reviewQueue: (limit?: number) =>
+      request<ActionPlan[]>(`/action-plans/review-queue${limit ? `?limit=${limit}` : ""}`),
+    updateStatus: (id: string, status: ActionPlanStatus, notes?: string) =>
+      request<ActionPlan>(`/action-plans/${id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status, notes }),
+      }),
+    addRemarks: (id: string, remarks: string) =>
+      request<ActionPlan>(`/action-plans/${id}/remarks`, {
+        method: "POST",
+        body: JSON.stringify({ remarks }),
+      }),
+    uploadAffidavit: async (id: string, file: File, notes?: string) => {
+      const form = new FormData();
+      form.append("file", file);
+      if (notes) form.append("notes", notes);
+      return request<ActionPlan>(`/action-plans/${id}/upload`, {
+        method: "POST",
+        body: form,
+      });
+    },
+    submit: (id: string, completion_notes?: string) =>
+      request<ActionPlan>(`/action-plans/${id}/submit`, {
+        method: "POST",
+        body: JSON.stringify({ completion_notes }),
+      }),
+    review: (id: string, decision: "approve" | "request_changes" | "reopen", feedback?: string) =>
+      request<ActionPlan>(`/action-plans/${id}/review`, {
+        method: "POST",
+        body: JSON.stringify({ decision, feedback }),
+      }),
+  },
+
   admin: {
     users: () => request<AdminUser[]>("/admin/users"),
     createUser: (payload: AdminUserUpsert) =>
@@ -146,6 +187,24 @@ export interface RegisterData {
   mobile?: string;
   office_unit?: string;
   state?: string;
+}
+
+export interface RoleOption {
+  key: "ADMIN" | "REVIEWER" | "DEPT_USER";
+  label: string;
+  desc: string;
+}
+
+export interface DepartmentOption {
+  id: string;
+  name: string;
+  code: string;
+  email?: string | null;
+}
+
+export interface RegisterOptions {
+  roles: RoleOption[];
+  departments: DepartmentOption[];
 }
 
 export interface CaseListItem {
@@ -309,4 +368,45 @@ export interface DeptAction {
   department: string;
   deadline: string | null;
   confidence_score: number;
+}
+
+export type ActionPlanStatus =
+  | "PENDING"
+  | "IN_PROGRESS"
+  | "AWAITING_REVIEW"
+  | "COMPLETED"
+  | "ESCALATED"
+  | "OVERDUE"
+  | "REOPENED";
+
+export interface ActionPlanTimelineEntry {
+  id: string;
+  event_type: string;
+  message: string;
+  actor_label: string;
+  created_at: string;
+  details?: Record<string, unknown> | null;
+}
+
+export interface ActionPlan {
+  id: string;
+  case_id: string;
+  case_number: string;
+  court: string;
+  directive_id: string;
+  directive_text: string;
+  action_type: string;
+  assigned_department: string;
+  assigned_officer_id?: string | null;
+  status: ActionPlanStatus;
+  due_date: string | null;
+  remarks?: string | null;
+  affidavit_url?: string | null;
+  completion_notes?: string | null;
+  reviewer_feedback?: string | null;
+  submitted_at?: string | null;
+  reviewed_at?: string | null;
+  created_at: string;
+  updated_at: string;
+  timeline: ActionPlanTimelineEntry[];
 }

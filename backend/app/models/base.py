@@ -37,6 +37,16 @@ class ActionType(str, enum.Enum):
     MONITOR = "MONITOR"
 
 
+class ActionPlanStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    IN_PROGRESS = "IN_PROGRESS"
+    AWAITING_REVIEW = "AWAITING_REVIEW"
+    COMPLETED = "COMPLETED"
+    ESCALATED = "ESCALATED"
+    OVERDUE = "OVERDUE"
+    REOPENED = "REOPENED"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -55,6 +65,8 @@ class User(Base):
 
     actions = relationship("CaseAction", back_populates="user")
     audit_logs = relationship("AuditLog", back_populates="user")
+    assigned_action_plans = relationship("ActionPlan", back_populates="assigned_officer")
+    action_plan_events = relationship("ActionPlanEvent", back_populates="user")
 
 
 class Case(Base):
@@ -81,6 +93,7 @@ class Case(Base):
     actions = relationship("CaseAction", back_populates="case")
     audit_logs = relationship("AuditLog", back_populates="case")
     directives = relationship("Directive", back_populates="case")
+    action_plans = relationship("ActionPlan", back_populates="case")
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -114,8 +127,50 @@ class Directive(Base):
     reviewed_by = Column(String)
     reviewed_at = Column(DateTime)
 
+    action_plan = relationship("ActionPlan", back_populates="directive", uselist=False)
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ActionPlan(Base):
+    __tablename__ = "action_plans"
+
+    id = Column(String, primary_key=True, default=generate_id)
+    case_id = Column(String, ForeignKey("cases.id"), nullable=False)
+    directive_id = Column(String, ForeignKey("directives.id"), nullable=False, unique=True)
+    assigned_department = Column(String, nullable=False)
+    assigned_officer_id = Column(String, ForeignKey("users.id"))
+    status = Column(Enum(ActionPlanStatus), default=ActionPlanStatus.PENDING, nullable=False)
+    due_date = Column(DateTime)
+    remarks = Column(Text)
+    affidavit_storage_key = Column(String)
+    completion_notes = Column(Text)
+    reviewer_feedback = Column(Text)
+    submitted_at = Column(DateTime)
+    reviewed_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    case = relationship("Case", back_populates="action_plans")
+    directive = relationship("Directive", back_populates="action_plan")
+    assigned_officer = relationship("User", back_populates="assigned_action_plans")
+    events = relationship("ActionPlanEvent", back_populates="action_plan")
+
+
+class ActionPlanEvent(Base):
+    __tablename__ = "action_plan_events"
+
+    id = Column(String, primary_key=True, default=generate_id)
+    action_plan_id = Column(String, ForeignKey("action_plans.id"), nullable=False)
+    user_id = Column(String, ForeignKey("users.id"))
+    event_type = Column(String, nullable=False)
+    message = Column(Text, nullable=False)
+    details = Column(JSON)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    action_plan = relationship("ActionPlan", back_populates="events")
+    user = relationship("User", back_populates="action_plan_events")
 
 
 class CaseAction(Base):

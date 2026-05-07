@@ -3,14 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Loader2, Search } from "lucide-react";
-import { api, CaseDetail, CaseListItem } from "@/lib/api";
+import { ActionPlan, api, CaseDetail, CaseListItem } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useDepartmentOptions } from "@/lib/use-department-options";
 
 const PAGE_SIZE = 5;
 
 type VerifiedCase = CaseListItem & {
   department: string;
   verifiedOn: string;
+  complianceStatus: string;
 };
 
 export default function VerifiedCasesPage() {
@@ -31,7 +33,8 @@ export default function VerifiedCasesPage() {
         const enriched = await Promise.all(
           items.map(async (item) => {
             const detail = await api.cases.get(item.id).catch(() => null);
-            return toVerifiedCase(item, detail);
+            const actionPlans = await api.actionPlans.byCase(item.id).catch(() => [] as ActionPlan[]);
+            return toVerifiedCase(item, detail, actionPlans);
           }),
         );
         setCases(enriched);
@@ -43,10 +46,11 @@ export default function VerifiedCasesPage() {
     });
   }, []);
 
-  const departments = useMemo(
+  const liveDepartments = useMemo(
     () => Array.from(new Set(cases.map((item) => item.department))).filter(Boolean).sort(),
     [cases],
   );
+  const departments = useDepartmentOptions(liveDepartments);
 
   const filteredCases = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -164,9 +168,16 @@ export default function VerifiedCasesPage() {
                     <td className="w-[16%] px-4 py-5 font-medium text-slate-500">{formatShortDate(item.verifiedOn)}</td>
                     <td className="w-[12%] px-4 py-5 font-semibold text-slate-700">{item.directive_count}</td>
                     <td className="w-[10%] px-4 py-5">
-                      <span className="rounded-md bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-600">
-                        Verified
-                      </span>
+                        <span className={cn(
+                          "rounded-md px-3 py-1 text-xs font-bold",
+                          item.complianceStatus === "Completed" && "bg-emerald-50 text-emerald-600",
+                          item.complianceStatus === "Awaiting Review" && "bg-violet-50 text-violet-600",
+                          item.complianceStatus === "In Progress" && "bg-blue-50 text-blue-600",
+                          item.complianceStatus === "Pending" && "bg-amber-50 text-amber-600",
+                          item.complianceStatus === "Escalated" && "bg-rose-50 text-rose-600",
+                        )}>
+                          {item.complianceStatus}
+                        </span>
                     </td>
                     <td className="w-[8%] px-4 py-5">
                       <Link
@@ -247,13 +258,22 @@ function PageButton({
   );
 }
 
-function toVerifiedCase(item: CaseListItem, detail: CaseDetail | null): VerifiedCase {
+function toVerifiedCase(item: CaseListItem, detail: CaseDetail | null, actionPlans: ActionPlan[]): VerifiedCase {
   const firstDepartment = detail?.directives.find((directive) => directive.department)?.department;
   return {
     ...item,
     department: firstDepartment || departmentFromCourt(item.court),
     verifiedOn: item.judgment_date || item.filed_at,
+    complianceStatus: summarizeCompliance(actionPlans),
   };
+}
+
+function summarizeCompliance(actionPlans: ActionPlan[]) {
+  if (actionPlans.some((item) => item.status === "AWAITING_REVIEW")) return "Awaiting Review";
+  if (actionPlans.some((item) => item.status === "ESCALATED")) return "Escalated";
+  if (actionPlans.length > 0 && actionPlans.every((item) => item.status === "COMPLETED")) return "Completed";
+  if (actionPlans.some((item) => item.status === "IN_PROGRESS")) return "In Progress";
+  return "Pending";
 }
 
 function departmentFromCourt(court: string) {

@@ -10,7 +10,7 @@ import {
   Download, ExternalLink,
   CheckCheck, X,
 } from "lucide-react";
-import { api, CaseDetail, Directive, AuditEntry } from "@/lib/api";
+import { ActionPlan, api, CaseDetail, Directive, AuditEntry } from "@/lib/api";
 import { formatDate, cn, daysUntil } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { can } from "@/lib/rbac";
@@ -55,29 +55,51 @@ export default function ReviewPage() {
   const [pdfUrl,     setPdfUrl]     = useState<string | null>(null);
   const [activeTab,  setActiveTab]  = useState<"pdf" | "text" | "blocks">("pdf");
   const [auditLogs,  setAuditLogs]  = useState<AuditEntry[]>([]);
+  const [actionPlans, setActionPlans] = useState<ActionPlan[]>([]);
+  const [actionWorking, setActionWorking] = useState(false);
+  const [remarksDraft, setRemarksDraft] = useState("");
+  const [completionDraft, setCompletionDraft] = useState("");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
   const canReview = can(user, "review_directive");
   const canViewAudit = can(user, "view_audit");
+  const canExecuteCompliance = can(user, "update_compliance");
 
   useEffect(() => {
     Promise.all([
       api.cases.get(id),
       api.cases.pdfUrl(id).catch(() => ({ url: null })),
+      api.actionPlans.byCase(id).catch(() => [] as ActionPlan[]),
       canViewAudit
         ? api.audit.logs({ case_id: id, limit: 5 }).catch(() => [] as AuditEntry[])
         : Promise.resolve([] as AuditEntry[]),
-    ]).then(([c, pdf, logs]) => {
+    ]).then(([c, pdf, plans, logs]) => {
       setCaseData(c);
       const first = c.directives.find((d) => d.status === "PENDING_REVIEW") ?? c.directives[0];
       if (first) { setSelected(first); setEditForm(first); }
       setPdfUrl(pdf.url);
+      setActionPlans(plans);
       setAuditLogs(logs);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [canViewAudit, id]);
 
+  useEffect(() => {
+    const plan = selected ? actionPlans.find((item) => item.directive_id === selected.id) : actionPlans[0];
+    void Promise.resolve().then(() => {
+      setRemarksDraft(plan?.remarks ?? "");
+      setCompletionDraft(plan?.completion_notes ?? "");
+      setUploadFile(null);
+    });
+  }, [actionPlans, selected]);
+
   const showToast = (msg: string, ok: boolean) => {
     setToast({ msg, ok });
     setTimeout(() => setToast(null), 3000);
+  };
+
+  const refreshActionPlans = async () => {
+    const plans = await api.actionPlans.byCase(id).catch(() => [] as ActionPlan[]);
+    setActionPlans(plans);
   };
 
   const handleDecide = async (directive: Directive, decision: "approve" | "reject") => {
@@ -99,6 +121,7 @@ export default function ReviewPage() {
       const sel = next ?? updated.directives[0] ?? null;
       setSelected(sel);
       if (sel) setEditForm(sel);
+      await refreshActionPlans();
       setEditingId(null);
       setNotes("");
       // Refresh audit
@@ -117,12 +140,83 @@ export default function ReviewPage() {
     setSubmitting(true);
     try {
       await api.review.setCaseStatus(id, "VERIFIED", "Submitted by reviewer");
+      await refreshActionPlans();
       showToast("Case submitted as Verified", true);
       setTimeout(() => router.push("/cases"), 1500);
     } catch (e: unknown) {
       showToast((e as Error).message, false);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleActionStatus = async (status: "PENDING" | "IN_PROGRESS" | "ESCALATED") => {
+    if (!selectedActionPlan) return;
+    setActionWorking(true);
+    try {
+      await api.actionPlans.updateStatus(selectedActionPlan.id, status);
+      await refreshActionPlans();
+      showToast(`Action plan moved to ${status.replace("_", " ").toLowerCase()}`, true);
+    } catch (e: unknown) {
+      showToast((e as Error).message, false);
+    } finally {
+      setActionWorking(false);
+    }
+  };
+
+  const handleSaveRemarks = async () => {
+    if (!selectedActionPlan) return;
+    setActionWorking(true);
+    try {
+      await api.actionPlans.addRemarks(selectedActionPlan.id, remarksDraft);
+      await refreshActionPlans();
+      showToast("Department remarks saved", true);
+    } catch (e: unknown) {
+      showToast((e as Error).message, false);
+    } finally {
+      setActionWorking(false);
+    }
+  };
+
+  const handleUploadAffidavit = async () => {
+    if (!selectedActionPlan || !uploadFile) return;
+    setActionWorking(true);
+    try {
+      await api.actionPlans.uploadAffidavit(selectedActionPlan.id, uploadFile, remarksDraft || undefined);
+      await refreshActionPlans();
+      showToast("Compliance evidence uploaded", true);
+    } catch (e: unknown) {
+      showToast((e as Error).message, false);
+    } finally {
+      setActionWorking(false);
+    }
+  };
+
+  const handleSubmitCompliance = async () => {
+    if (!selectedActionPlan) return;
+    setActionWorking(true);
+    try {
+      await api.actionPlans.submit(selectedActionPlan.id, completionDraft || undefined);
+      await refreshActionPlans();
+      showToast("Compliance submitted for reviewer verification", true);
+    } catch (e: unknown) {
+      showToast((e as Error).message, false);
+    } finally {
+      setActionWorking(false);
+    }
+  };
+
+  const handleComplianceReview = async (decision: "approve" | "request_changes" | "reopen") => {
+    if (!selectedActionPlan) return;
+    setActionWorking(true);
+    try {
+      await api.actionPlans.review(selectedActionPlan.id, decision, completionDraft || undefined);
+      await refreshActionPlans();
+      showToast(`Compliance ${decision.replace("_", " ")} successfully`, true);
+    } catch (e: unknown) {
+      showToast((e as Error).message, false);
+    } finally {
+      setActionWorking(false);
     }
   };
 
@@ -147,6 +241,9 @@ export default function ReviewPage() {
   const confColor = confidence >= 80 ? "text-emerald-600" : confidence >= 60 ? "text-amber-600" : "text-red-600";
 
   const initials = user?.name?.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase() ?? "U";
+  const selectedActionPlan =
+    (selected ? actionPlans.find((item) => item.directive_id === selected.id) : null) ?? actionPlans[0] ?? null;
+  const parentPath = canReview ? "/cases" : "/verified";
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-slate-50">
@@ -155,9 +252,11 @@ export default function ReviewPage() {
       <div className="shrink-0 bg-white border-b border-slate-200 px-6 h-14 flex items-center justify-between">
         {/* Breadcrumb */}
         <div className="flex items-center gap-1.5 text-sm">
-          <Link href="/cases" className="text-slate-500 hover:text-indigo-600 transition-colors">Cases</Link>
+          <Link href={parentPath} className="text-slate-500 hover:text-indigo-600 transition-colors">
+            {canReview ? "Cases" : "Verified Cases"}
+          </Link>
           <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
-          <Link href={`/cases/${id}`} className="text-slate-500 hover:text-indigo-600 transition-colors">
+          <Link href={`/cases/${id}/review`} className="text-slate-500 hover:text-indigo-600 transition-colors">
             {caseData.case_number}
           </Link>
           <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
@@ -685,6 +784,169 @@ export default function ReviewPage() {
               </div>
             </div>
 
+            {/* Compliance Execution */}
+            {selectedActionPlan && (
+              <div>
+                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide mb-3">
+                  {canExecuteCompliance ? "Compliance Execution" : "Compliance Review"}
+                </h3>
+                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-semibold text-slate-700">{selectedActionPlan.assigned_department}</span>
+                    <span className={cn(
+                      "rounded-full px-2.5 py-1 text-[10px] font-bold",
+                      selectedActionPlan.status === "COMPLETED" && "bg-emerald-50 text-emerald-600",
+                      selectedActionPlan.status === "IN_PROGRESS" && "bg-blue-50 text-blue-600",
+                      selectedActionPlan.status === "AWAITING_REVIEW" && "bg-violet-50 text-violet-600",
+                      (selectedActionPlan.status === "PENDING" || selectedActionPlan.status === "REOPENED") && "bg-amber-50 text-amber-600",
+                      selectedActionPlan.status === "ESCALATED" && "bg-rose-50 text-rose-600",
+                    )}>
+                      {labelForPlanStatus(selectedActionPlan.status)}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1 text-[11px] text-slate-500">
+                    <p>Due: <span className="font-medium text-slate-700">{formatDate(selectedActionPlan.due_date)}</span></p>
+                    {selectedActionPlan.reviewer_feedback && (
+                      <p className="text-rose-600">Reviewer feedback: {selectedActionPlan.reviewer_feedback}</p>
+                    )}
+                  </div>
+
+                  <textarea
+                    rows={3}
+                    value={remarksDraft}
+                    onChange={(e) => setRemarksDraft(e.target.value)}
+                    disabled={actionWorking || !canExecuteCompliance}
+                    placeholder="Add department remarks"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:ring-1 focus:ring-indigo-400 disabled:bg-slate-100"
+                  />
+
+                  <textarea
+                    rows={3}
+                    value={completionDraft}
+                    onChange={(e) => setCompletionDraft(e.target.value)}
+                    disabled={actionWorking}
+                    placeholder={canExecuteCompliance ? "Completion notes for reviewer" : "Reviewer feedback / decision notes"}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:ring-1 focus:ring-indigo-400 disabled:bg-slate-100"
+                  />
+
+                  {selectedActionPlan.affidavit_url ? (
+                    <a
+                      href={selectedActionPlan.affidavit_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" /> View uploaded affidavit
+                    </a>
+                  ) : (
+                    <p className="text-[11px] text-slate-400">No affidavit uploaded yet.</p>
+                  )}
+
+                  {canExecuteCompliance && (
+                    <>
+                      <input
+                        type="file"
+                        accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+                        onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+                        className="block w-full text-[11px] text-slate-500 file:mr-3 file:rounded-md file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-indigo-600"
+                      />
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          disabled={actionWorking}
+                          onClick={() => void handleActionStatus("IN_PROGRESS")}
+                          className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-indigo-200 hover:text-indigo-600 disabled:opacity-60"
+                        >
+                          Mark In Progress
+                        </button>
+                        <button
+                          type="button"
+                          disabled={actionWorking}
+                          onClick={() => void handleActionStatus("ESCALATED")}
+                          className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-rose-200 hover:text-rose-600 disabled:opacity-60"
+                        >
+                          Escalate
+                        </button>
+                        <button
+                          type="button"
+                          disabled={actionWorking}
+                          onClick={() => void handleSaveRemarks()}
+                          className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-indigo-200 hover:text-indigo-600 disabled:opacity-60"
+                        >
+                          Save Draft
+                        </button>
+                        <button
+                          type="button"
+                          disabled={actionWorking || !uploadFile}
+                          onClick={() => void handleUploadAffidavit()}
+                          className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-indigo-200 hover:text-indigo-600 disabled:opacity-60"
+                        >
+                          Upload Evidence
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={actionWorking}
+                        onClick={() => void handleSubmitCompliance()}
+                        className="w-full rounded-lg bg-indigo-600 px-3 py-2.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+                      >
+                        Submit Compliance
+                      </button>
+                    </>
+                  )}
+
+                  {canReview && selectedActionPlan.status === "AWAITING_REVIEW" && (
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        disabled={actionWorking}
+                        onClick={() => void handleComplianceReview("approve")}
+                        className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        disabled={actionWorking}
+                        onClick={() => void handleComplianceReview("request_changes")}
+                        className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-50 disabled:opacity-60"
+                      >
+                        Request Changes
+                      </button>
+                      <button
+                        type="button"
+                        disabled={actionWorking}
+                        onClick={() => void handleComplianceReview("reopen")}
+                        className="rounded-lg border border-rose-300 bg-white px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+                      >
+                        Reopen
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="space-y-2 border-t border-slate-200 pt-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Compliance Evidence Timeline</p>
+                    {selectedActionPlan.timeline.length === 0 ? (
+                      <p className="text-[11px] text-slate-400">No compliance events yet.</p>
+                    ) : (
+                      selectedActionPlan.timeline.slice(-5).reverse().map((entry) => (
+                        <div key={entry.id} className="flex items-start gap-2">
+                          <div className="mt-1 h-2 w-2 rounded-full bg-indigo-500 shrink-0" />
+                          <div>
+                            <p className="text-[11px] font-medium text-slate-700">{entry.message}</p>
+                            <p className="text-[10px] text-slate-400">
+                              {entry.actor_label} · {new Date(entry.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                            </p>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Audit Trail */}
             <div>
               <div className="flex items-center justify-between mb-3">
@@ -837,4 +1099,12 @@ function SummaryCard({
       <p className="text-[10px] font-medium opacity-80 leading-tight mt-0.5">{label}</p>
     </div>
   );
+}
+
+function labelForPlanStatus(status: ActionPlan["status"]) {
+  return status
+    .toLowerCase()
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }

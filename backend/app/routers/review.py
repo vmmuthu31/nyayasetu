@@ -10,6 +10,7 @@ from sqlalchemy import select
 from app.core.database import get_db
 from app.models.base import Case, Directive, CaseAction, CaseStatus, ActionType, User
 from app.routers.deps import require_reviewer_or_admin
+from app.services.action_plans import ensure_action_plan_for_directive, sync_case_action_status
 from app.services.audit import append_audit_log
 
 router = APIRouter(prefix="/review", tags=["review"])
@@ -96,6 +97,11 @@ async def review_directive(
         if case:
             verified_count = sum(1 for d in all_dirs if d.status == CaseStatus.VERIFIED)
             case.status = CaseStatus.VERIFIED if verified_count > 0 else CaseStatus.REJECTED
+
+    if directive.status == CaseStatus.VERIFIED:
+        await ensure_action_plan_for_directive(db, directive)
+
+    await sync_case_action_status(db, directive.case_id)
 
     await append_audit_log(
         db,

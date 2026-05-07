@@ -1,181 +1,519 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Building2, RefreshCw, Search, CheckCircle, AlertTriangle, Gavel, Eye } from "lucide-react";
-import Link from "next/link";
-import { api, DeptSummary } from "@/lib/api";
-import { formatDate, cn } from "@/lib/utils";
+import { useEffect, useMemo, useState } from "react";
+import type { LucideIcon } from "lucide-react";
+import {
+  Building2,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  ClipboardList,
+  EllipsisVertical,
+  Filter,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+} from "lucide-react";
+import { api, type DepartmentOption, type DeptSummary } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { ALL_DEPARTMENTS } from "@/lib/gov-catalog";
 
-const ACTION_COLORS: Record<string, string> = {
-  COMPLY: "text-emerald-600 bg-emerald-50",
-  APPEAL: "text-red-600 bg-red-50",
-  INFORM: "text-blue-600 bg-blue-50",
-  MONITOR: "text-violet-600 bg-violet-50",
+type DepartmentRow = {
+  name: string;
+  code: string;
+  ministry: string;
+  state: string;
+  casesAssigned: number;
+  complianceRate: number | null;
+  active: boolean;
 };
 
 export default function AdminDepartmentsPage() {
-  const [depts, setDepts] = useState<DeptSummary[]>([]);
+  const [catalogDepartments, setCatalogDepartments] = useState<DepartmentOption[]>(
+    ALL_DEPARTMENTS.map((name, index) => ({
+      id: `fallback-${index + 1}`,
+      name,
+      code: `DEPT-${String(index + 1).padStart(3, "0")}`,
+      email: null,
+    })),
+  );
+  const [summary, setSummary] = useState<DeptSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All Status");
+  const [ministryFilter, setMinistryFilter] = useState("All Ministries");
+  const [stateFilter, setStateFilter] = useState("All States / UTs");
 
-  const load = () => {
-    setLoading(true);
-    setError(null);
-    api.departments.summary()
-      .then(setDepts)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  };
+  useEffect(() => {
+    void Promise.resolve().then(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [departmentOptions, departmentSummary] = await Promise.all([
+          api.auth.options().catch(() => null),
+          api.departments.summary().catch(() => [] as DeptSummary[]),
+        ]);
+        if (departmentOptions?.departments.length) {
+          setCatalogDepartments(departmentOptions.departments);
+        }
+        setSummary(departmentSummary);
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        setLoading(false);
+      }
+    });
+  }, []);
 
-  useEffect(() => { load(); }, []);
-
-  const filtered = depts.filter((d) =>
-    !search || d.department.toLowerCase().includes(search.toLowerCase())
+  const summaryByDepartment = useMemo(
+    () => new Map(summary.map((item) => [item.department, item])),
+    [summary],
   );
 
-  const totalDirectives = depts.reduce((s, d) => s + d.total, 0);
-  const critical = depts.filter((d) => d.days_until_deadline !== null && d.days_until_deadline <= 7).length;
+  const rows = useMemo<DepartmentRow[]>(
+    () =>
+      catalogDepartments.map((department) => {
+        const live = summaryByDepartment.get(department.name);
+        const complianceRate =
+          live && live.total > 0
+            ? Math.round(
+                ((live.by_action.COMPLY + live.by_action.INFORM) / live.total) *
+                  100,
+              )
+            : null;
+
+        return {
+          name: department.name,
+          code: department.code,
+          ministry: ministryLabel(department.name),
+          state: "All India",
+          casesAssigned: live?.total ?? 0,
+          complianceRate,
+          active: Boolean(live && live.total > 0),
+        };
+      }),
+    [catalogDepartments, summaryByDepartment],
+  );
+
+  const ministryOptions = useMemo(
+    () => ["All Ministries", ...new Set(rows.map((row) => row.ministry))],
+    [rows],
+  );
+
+  const filteredRows = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return rows.filter((row) => {
+      const matchesSearch =
+        !needle ||
+        row.name.toLowerCase().includes(needle) ||
+        row.code.toLowerCase().includes(needle);
+      const matchesStatus =
+        statusFilter === "All Status" ||
+        (statusFilter === "Active" ? row.active : !row.active);
+      const matchesMinistry =
+        ministryFilter === "All Ministries" || row.ministry === ministryFilter;
+      const matchesState =
+        stateFilter === "All States / UTs" || row.state === stateFilter;
+
+      return (
+        matchesSearch && matchesStatus && matchesMinistry && matchesState
+      );
+    });
+  }, [ministryFilter, rows, search, stateFilter, statusFilter]);
+
+  const totalDepartments = rows.length;
+  const activeDepartments = rows.filter((row) => row.active).length;
+  const casesAssigned = rows.reduce((sum, row) => sum + row.casesAssigned, 0);
+  const complianceRate = averageCompliance(rows);
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Top bar */}
-      <div className="shrink-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center">
-            <Building2 className="w-5 h-5 text-indigo-600" />
+    <main className="h-full overflow-y-auto bg-[#f5f7fb]">
+      <div className="mx-auto flex min-h-full w-full max-w-[1280px] flex-col px-8 py-8">
+        <section className="rounded-[30px] border border-white/80 bg-white/95 p-8 shadow-[0_32px_90px_-45px_rgba(15,23,42,0.35)]">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h1 className="text-[42px] font-semibold tracking-tight text-slate-950">
+                Departments
+              </h1>
+              <p className="mt-2 text-[16px] text-slate-500">
+                Manage departments and their hierarchy. Assign reviewers and
+                manage access.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="inline-flex h-12 items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-5 text-sm font-semibold text-white shadow-[0_16px_36px_-18px_rgba(79,70,229,0.75)] transition hover:brightness-105"
+            >
+              <Plus className="h-4 w-4" />
+              Add Department
+            </button>
           </div>
-          <div>
-            <h1 className="text-lg font-bold text-slate-900 leading-tight">Department Management</h1>
-            <p className="text-slate-500 text-xs">
-              {loading ? "Loading…" : `${filtered.length} department${filtered.length !== 1 ? "s" : ""} · ${totalDirectives} total directives`}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search department…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 w-56"
+
+          <div className="mt-8 grid gap-4 xl:grid-cols-4">
+            <MetricCard
+              icon={Building2}
+              label="Total Departments"
+              value={totalDepartments}
+              detail="All departments"
+              tone="indigo"
+            />
+            <MetricCard
+              icon={ShieldCheck}
+              label="Active Departments"
+              value={activeDepartments}
+              detail="Currently active"
+              tone="emerald"
+            />
+            <MetricCard
+              icon={ClipboardList}
+              label="Cases Assigned"
+              value={casesAssigned}
+              detail="Total across all"
+              tone="amber"
+            />
+            <MetricCard
+              icon={CheckCircle2}
+              label="Compliance Rate"
+              value={`${complianceRate}%`}
+              detail="Catalog-wide proxy rate"
+              tone="sky"
             />
           </div>
-          <button
-            onClick={load}
-            className="flex items-center gap-1.5 text-sm text-slate-600 border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50"
-          >
-            <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} /> Refresh
-          </button>
-        </div>
-      </div>
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-5">
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{error}</div>
-        )}
-
-        {/* Summary strips */}
-        {!loading && depts.length > 0 && (
-          <div className="grid grid-cols-3 gap-4">
-            <div className="rounded-xl bg-indigo-50 border border-indigo-200 px-4 py-3 flex items-center gap-3">
-              <Building2 className="w-5 h-5 text-indigo-500" />
-              <div>
-                <p className="text-2xl font-bold text-indigo-700">{depts.length}</p>
-                <p className="text-xs text-indigo-600 font-medium">Active Departments</p>
-              </div>
-            </div>
-            <div className="rounded-xl bg-slate-50 border border-slate-200 px-4 py-3 flex items-center gap-3">
-              <CheckCircle className="w-5 h-5 text-emerald-500" />
-              <div>
-                <p className="text-2xl font-bold text-slate-700">{totalDirectives}</p>
-                <p className="text-xs text-slate-500 font-medium">Total Directives</p>
-              </div>
-            </div>
-            <div className={cn(
-              "rounded-xl border px-4 py-3 flex items-center gap-3",
-              critical > 0 ? "bg-red-50 border-red-200" : "bg-emerald-50 border-emerald-200"
-            )}>
-              <AlertTriangle className={cn("w-5 h-5", critical > 0 ? "text-red-500" : "text-emerald-500")} />
-              <div>
-                <p className={cn("text-2xl font-bold", critical > 0 ? "text-red-700" : "text-emerald-700")}>{critical}</p>
-                <p className={cn("text-xs font-medium", critical > 0 ? "text-red-600" : "text-emerald-600")}>Critical Deadlines (≤7d)</p>
-              </div>
-            </div>
+          <div className="mt-8 grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_180px_180px_180px_auto_auto]">
+            <SearchField value={search} onChange={setSearch} />
+            <FilterSelect
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={["All Status", "Active", "Inactive"]}
+            />
+            <FilterSelect
+              value={ministryFilter}
+              onChange={setMinistryFilter}
+              options={ministryOptions}
+            />
+            <FilterSelect
+              value={stateFilter}
+              onChange={setStateFilter}
+              options={["All States / UTs", "All India"]}
+            />
+            <button
+              type="button"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-600 shadow-sm transition hover:bg-slate-50"
+            >
+              <Filter className="h-4 w-4" />
+              Filter
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
+                setStatusFilter("All Status");
+                setMinistryFilter("All Ministries");
+                setStateFilter("All States / UTs");
+              }}
+              className="inline-flex h-11 items-center justify-center text-sm font-medium text-indigo-600 transition hover:text-indigo-700"
+            >
+              Reset
+            </button>
           </div>
-        )}
 
-        {/* Department cards */}
-        {loading ? (
-          <div className="flex items-center justify-center py-16 text-slate-400 gap-2">
-            <RefreshCw className="w-5 h-5 animate-spin" /> Loading departments…
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <Building2 className="w-12 h-12 text-slate-200 mb-3" />
-            <p className="text-slate-500 font-medium">No departments found</p>
-            <p className="text-slate-400 text-sm mt-1">Departments appear here once cases are ingested with directives</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filtered.map((dept) => {
-              const isUrgent = dept.days_until_deadline !== null && dept.days_until_deadline <= 7;
-              return (
-                <div key={dept.department} className={cn(
-                  "bg-white rounded-xl border shadow-sm p-4 hover:shadow-md transition-shadow",
-                  isUrgent ? "border-red-200" : "border-slate-200"
-                )}>
-                  <div className="flex items-start justify-between gap-2 mb-3">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Building2 className="w-4 h-4 text-slate-400 shrink-0" />
-                      <h3 className="font-semibold text-slate-800 text-sm truncate">{dept.department}</h3>
-                    </div>
-                    <span className="shrink-0 text-lg font-bold text-slate-700">{dept.total}</span>
-                  </div>
+          {error ? (
+            <div className="mt-5 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {error}
+            </div>
+          ) : null}
 
-                  {/* Action type breakdown */}
-                  <div className="grid grid-cols-4 gap-1 mb-3">
-                    {(["COMPLY", "APPEAL", "INFORM", "MONITOR"] as const).map((action) => (
-                      <div key={action} className={cn("text-center py-1 rounded-lg", ACTION_COLORS[action])}>
-                        <p className="text-sm font-bold">{dept.by_action[action]}</p>
-                        <p className="text-[9px] font-medium uppercase tracking-wide">{action[0]}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Deadline */}
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                    {dept.earliest_deadline ? (
-                      <div className="flex items-center gap-1.5">
-                        {isUrgent
-                          ? <AlertTriangle className="w-3 h-3 text-red-500" />
-                          : <Gavel className="w-3 h-3 text-slate-400" />
-                        }
-                        <span className={cn("text-xs font-medium", isUrgent ? "text-red-600" : "text-slate-500")}>
-                          {formatDate(dept.earliest_deadline)}
-                          {dept.days_until_deadline !== null && (
-                            <span className="ml-1 opacity-70">({dept.days_until_deadline}d)</span>
+          <div className="mt-7 overflow-hidden rounded-[24px] border border-slate-200">
+            <table className="min-w-full table-fixed bg-white">
+              <thead className="bg-slate-50">
+                <tr className="text-left text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">
+                  <th className="w-[4%] px-4 py-4" />
+                  <th className="w-[22%] px-4 py-4">Department Name</th>
+                  <th className="w-[14%] px-4 py-4">Department Code</th>
+                  <th className="w-[22%] px-4 py-4">Ministry / Head</th>
+                  <th className="w-[10%] px-4 py-4">State / UT</th>
+                  <th className="w-[10%] px-4 py-4">Cases Assigned</th>
+                  <th className="w-[12%] px-4 py-4">Compliance Rate</th>
+                  <th className="w-[8%] px-4 py-4">Status</th>
+                  <th className="w-[8%] px-4 py-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {loading ? (
+                  <tr>
+                    <td colSpan={9} className="px-4 py-20 text-center text-sm text-slate-400">
+                      <span className="inline-flex items-center gap-2">
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        Loading departments
+                      </span>
+                    </td>
+                  </tr>
+                ) : filteredRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="px-4 py-20 text-center text-sm text-slate-400">
+                      No departments match these filters
+                    </td>
+                  </tr>
+                ) : (
+                  filteredRows.slice(0, 10).map((row) => (
+                    <tr key={row.code} className="text-sm text-slate-600">
+                      <td className="px-4 py-5">
+                        <ChevronRight className="h-4 w-4 text-slate-300" />
+                      </td>
+                      <td className="px-4 py-5 font-medium text-slate-800">
+                        {row.name}
+                      </td>
+                      <td className="px-4 py-5 font-medium text-slate-500">
+                        {row.code}
+                      </td>
+                      <td className="px-4 py-5 text-slate-500">
+                        {row.ministry}
+                      </td>
+                      <td className="px-4 py-5 text-slate-500">{row.state}</td>
+                      <td className="px-4 py-5 font-medium text-slate-700">
+                        {row.casesAssigned}
+                      </td>
+                      <td className="px-4 py-5">
+                        {row.complianceRate === null ? (
+                          <span className="text-slate-300">-</span>
+                        ) : (
+                          <div className="flex items-center gap-3">
+                            <span className="w-8 text-sm font-medium text-slate-700">
+                              {row.complianceRate}%
+                            </span>
+                            <div className="h-1.5 w-[84px] overflow-hidden rounded-full bg-slate-100">
+                              <div
+                                className={cn(
+                                  "h-full rounded-full",
+                                  progressTone(row.complianceRate),
+                                )}
+                                style={{ width: `${row.complianceRate}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-5">
+                        <span
+                          className={cn(
+                            "inline-flex rounded-full px-3 py-1 text-xs font-semibold",
+                            row.active
+                              ? "bg-emerald-50 text-emerald-700"
+                              : "bg-rose-50 text-rose-600",
                           )}
+                        >
+                          {row.active ? "Active" : "Inactive"}
                         </span>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-slate-300">No deadline set</span>
-                    )}
-                    <Link
-                      href={`/departments`}
-                      className="text-[11px] font-medium text-indigo-600 hover:text-indigo-800 flex items-center gap-0.5"
-                    >
-                      <Eye className="w-3 h-3" /> View
-                    </Link>
-                  </div>
-                </div>
-              );
-            })}
+                      </td>
+                      <td className="px-4 py-5">
+                        <div className="flex items-center justify-end gap-3 text-slate-400">
+                          <button type="button" className="transition hover:text-indigo-600">
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button type="button" className="transition hover:text-slate-600">
+                            <EllipsisVertical className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
-        )}
+
+          <div className="mt-6 flex items-center justify-between text-sm text-slate-500">
+            <p>
+              Showing {filteredRows.length === 0 ? 0 : 1} to{" "}
+              {Math.min(filteredRows.length, 10)} of {filteredRows.length}{" "}
+              departments
+            </p>
+            <div className="flex items-center gap-3">
+              <FilterSelect
+                value="10 / page"
+                onChange={() => {}}
+                options={["10 / page"]}
+                compact
+              />
+              <PaginationButton active>1</PaginationButton>
+              <PaginationButton>2</PaginationButton>
+              <PaginationButton>3</PaginationButton>
+              <PaginationButton>
+                <ChevronRight className="h-4 w-4" />
+              </PaginationButton>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function SearchField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="relative">
+      <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="Search department name or code..."
+        className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-4 text-sm text-slate-700 shadow-sm outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-500/15"
+      />
+    </div>
+  );
+}
+
+function FilterSelect({
+  compact,
+  onChange,
+  options,
+  value,
+}: {
+  compact?: boolean;
+  onChange: (value: string) => void;
+  options: string[];
+  value: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "relative flex h-11 items-center justify-between rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-600 shadow-sm",
+        compact && "min-w-[112px]",
+      )}
+    >
+      <span className="truncate">{value}</span>
+      <ChevronDown className="h-4 w-4 text-slate-400" />
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function MetricCard({
+  detail,
+  icon: Icon,
+  label,
+  tone,
+  value,
+}: {
+  detail: string;
+  icon: LucideIcon;
+  label: string;
+  tone: "amber" | "emerald" | "indigo" | "sky";
+  value: number | string;
+}) {
+  const iconTone = {
+    amber: "bg-amber-50 text-amber-500",
+    emerald: "bg-emerald-50 text-emerald-500",
+    indigo: "bg-indigo-50 text-indigo-500",
+    sky: "bg-blue-50 text-blue-500",
+  } as const;
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_18px_50px_-40px_rgba(15,23,42,0.5)]">
+      <div className="flex items-start gap-4">
+        <div
+          className={cn(
+            "flex h-12 w-12 items-center justify-center rounded-full",
+            iconTone[tone],
+          )}
+        >
+          <Icon className="h-5 w-5" />
+        </div>
+        <div>
+          <p className="text-sm text-slate-500">{label}</p>
+          <p className="mt-2 text-[22px] font-semibold text-slate-900">
+            {value}
+          </p>
+          <p className="mt-2 text-sm text-slate-400">{detail}</p>
+        </div>
       </div>
     </div>
   );
+}
+
+function PaginationButton({
+  active,
+  children,
+}: {
+  active?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        "flex h-10 min-w-10 items-center justify-center rounded-xl border px-3 text-sm font-semibold transition",
+        active
+          ? "border-indigo-200 bg-indigo-600 text-white"
+          : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function averageCompliance(rows: DepartmentRow[]) {
+  const rates = rows
+    .map((row) => row.complianceRate)
+    .filter((value): value is number => value !== null);
+  if (rates.length === 0) return 0;
+  return Math.round(
+    rates.reduce((sum, value) => sum + value, 0) / rates.length,
+  );
+}
+
+function ministryLabel(name: string) {
+  const base = name
+    .replace(/\s+Department$/i, "")
+    .replace(/\s+Ministry$/i, "");
+
+  const specialCases: Record<string, string> = {
+    "Commerce & Industry": "Ministry of Commerce & Industry",
+    "Environment & Climate": "Ministry of Environment, Forest & Climate",
+    "Health & Family Welfare": "Ministry of Health & Family Welfare",
+    "Housing & Urban Affairs": "Ministry of Housing & Urban Affairs",
+    "Information & Broadcasting": "Ministry of Information & Broadcasting",
+    "Jal Shakti / Water Resources": "Ministry of Jal Shakti",
+    "Labour & Employment": "Ministry of Labour & Employment",
+    "Micro, Small & Medium Enterprises":
+      "Ministry of MSME",
+    "Ports, Shipping & Waterways":
+      "Ministry of Ports, Shipping & Waterways",
+    "Road Transport & Highways":
+      "Ministry of Road Transport & Highways",
+    "Social Justice & Empowerment":
+      "Ministry of Social Justice & Empowerment",
+    "Women & Child Development":
+      "Ministry of Women & Child Development",
+    "Youth Affairs & Sports": "Ministry of Youth Affairs & Sports",
+  };
+
+  return specialCases[name] ?? `Ministry of ${base}`;
+}
+
+function progressTone(value: number) {
+  if (value >= 70) return "bg-emerald-400";
+  if (value >= 60) return "bg-amber-400";
+  return "bg-orange-400";
 }

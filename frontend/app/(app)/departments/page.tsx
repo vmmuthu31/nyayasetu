@@ -1,29 +1,24 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { ChevronDown } from "lucide-react";
-import { api, DeptAction, DeptSummary } from "@/lib/api";
-import { cn, daysUntil } from "@/lib/utils";
+import { ActionPlan, api, DeptSummary } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
-
-type ActionPlanRow = {
-  caseId: string;
-  caseTitle: string;
-  directives: number;
-  pendingActions: number;
-  dueDate: string | null;
-  status: "In Progress" | "Pending" | "Completed";
-  progress: number;
-};
+import { useDepartmentOptions } from "@/lib/use-department-options";
 
 export default function DepartmentsPage() {
   const { user } = useAuth();
   const [summaries, setSummaries] = useState<DeptSummary[]>([]);
   const [selected, setSelected] = useState("");
-  const [actions, setActions] = useState<DeptAction[]>([]);
+  const [actions, setActions] = useState<ActionPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionsLoading, setActionsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const departmentOptions = useDepartmentOptions(
+    summaries.map((item) => item.department),
+  );
 
   useEffect(() => {
     void Promise.resolve().then(async () => {
@@ -52,7 +47,10 @@ export default function DepartmentsPage() {
     void Promise.resolve().then(async () => {
       setActionsLoading(true);
       try {
-        const data = await api.departments.actions(selected);
+        const data = await api.actionPlans.myDepartment({
+          department: user?.role === "DEPT_USER" ? undefined : selected,
+          limit: 100,
+        });
         setActions(data);
       } catch {
         setActions([]);
@@ -60,25 +58,36 @@ export default function DepartmentsPage() {
         setActionsLoading(false);
       }
     });
-  }, [selected]);
+  }, [selected, user]);
+
+  useEffect(() => {
+    if (selected) return;
+    const fallback =
+      user?.role === "DEPT_USER"
+        ? user.department
+        : departmentOptions[0];
+    if (fallback) {
+      void Promise.resolve().then(() => setSelected(fallback));
+    }
+  }, [departmentOptions, selected, user]);
 
   const selectedSummary = useMemo(
     () => summaries.find((item) => item.department === selected) ?? null,
     [selected, summaries],
   );
 
-  const actionPlans = useMemo(() => groupActionPlans(actions), [actions]);
-  const pendingCount = actionPlans.reduce(
-    (sum, item) => sum + item.pendingActions,
-    0,
+  const pendingCount = useMemo(
+    () => actions.filter((item) => item.status !== "COMPLETED").length,
+    [actions],
   );
-  const completedCount = actionPlans.filter(
-    (item) => item.status === "Completed",
-  ).length;
+  const completedCount = useMemo(
+    () => actions.filter((item) => item.status === "COMPLETED").length,
+    [actions],
+  );
   const compliancePct =
-    actionPlans.length === 0
+    actions.length === 0
       ? 0
-      : Math.round((completedCount / actionPlans.length) * 100);
+      : Math.round((completedCount / actions.length) * 100);
   const updatedLabel = selectedSummary?.earliest_deadline
     ? formatLongDate(selectedSummary.earliest_deadline)
     : formatLongDate(new Date().toISOString());
@@ -112,9 +121,9 @@ export default function DepartmentsPage() {
                 className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                 aria-label="Select department"
               >
-                {summaries.map((item) => (
-                  <option key={item.department} value={item.department}>
-                    {item.department}
+                {departmentOptions.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
                   </option>
                 ))}
               </select>
@@ -144,7 +153,7 @@ export default function DepartmentsPage() {
 
         <section className="mt-10">
           <h2 className="text-[20px] font-semibold text-slate-950">
-            Recent Action Plans
+            {user?.role === "DEPT_USER" ? "My Assigned Actions" : "Recent Action Plans"}
           </h2>
 
           <div className="mt-6 overflow-hidden bg-white">
@@ -152,12 +161,11 @@ export default function DepartmentsPage() {
               <thead>
                 <tr className="border-b border-slate-100">
                   {[
-                    "CASE TITLE",
-                    "DIRECTIVES",
-                    "PENDING ACTIONS",
+                    "CASE",
+                    "DIRECTIVE",
                     "DUE DATE",
                     "STATUS",
-                    "PROGRESS",
+                    "ACTIONS",
                   ].map((heading) => (
                     <th
                       key={heading}
@@ -172,65 +180,60 @@ export default function DepartmentsPage() {
                 {loading || actionsLoading ? (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={5}
                       className="px-4 py-16 text-center text-sm text-slate-400"
                     >
                       Loading department action plans
                     </td>
                   </tr>
-                ) : actionPlans.length === 0 ? (
+                ) : actions.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={5}
                       className="px-4 py-16 text-center text-sm text-slate-400"
                     >
                       No action plans available for this department
                     </td>
                   </tr>
                 ) : (
-                  actionPlans.slice(0, 4).map((item) => (
-                    <tr key={item.caseId} className="text-sm text-slate-600">
-                      <td className="w-[28%] px-3 py-5 font-medium text-slate-800">
-                        {item.caseTitle}
+                  actions.slice(0, 6).map((item) => (
+                    <tr key={item.id} className="text-sm text-slate-600">
+                      <td className="w-[22%] px-3 py-5">
+                        <p className="font-medium text-slate-800">{item.case_number}</p>
+                        <p className="mt-1 text-xs text-slate-500">{item.court}</p>
                       </td>
-                      <td className="w-[14%] px-3 py-5 font-semibold text-slate-700">
-                        {item.directives}
-                      </td>
-                      <td className="w-[18%] px-3 py-5 font-semibold text-slate-700">
-                        {item.pendingActions}
+                      <td className="w-[36%] px-3 py-5 font-medium text-slate-700">
+                        <p className="line-clamp-2">{item.directive_text}</p>
                       </td>
                       <td className="w-[16%] px-3 py-5 font-medium text-slate-500">
-                        {item.status === "Completed"
-                          ? "Completed"
-                          : formatShortDate(item.dueDate)}
+                        {formatShortDate(item.due_date)}
                       </td>
                       <td className="w-[12%] px-3 py-5">
                         <span
                           className={cn(
                             "rounded-md px-3 py-1 text-xs font-bold",
-                            item.status === "Completed" &&
+                            item.status === "COMPLETED" &&
                               "bg-emerald-50 text-emerald-600",
-                            item.status === "In Progress" &&
+                            item.status === "IN_PROGRESS" &&
                               "bg-blue-50 text-blue-600",
-                            item.status === "Pending" &&
+                            item.status === "AWAITING_REVIEW" &&
+                              "bg-violet-50 text-violet-600",
+                            (item.status === "PENDING" || item.status === "REOPENED") &&
                               "bg-amber-50 text-amber-600",
+                            item.status === "ESCALATED" &&
+                              "bg-rose-50 text-rose-600",
                           )}
                         >
-                          {item.status}
+                          {labelForStatus(item.status)}
                         </span>
                       </td>
-                      <td className="w-[12%] px-3 py-5">
-                        <div className="flex items-center gap-3">
-                          <div className="h-1.5 w-24 overflow-hidden rounded-full bg-slate-100">
-                            <div
-                              className="h-full rounded-full bg-indigo-600"
-                              style={{ width: `${item.progress}%` }}
-                            />
-                          </div>
-                          <span className="text-xs font-medium text-slate-500">
-                            {item.progress}%
-                          </span>
-                        </div>
+                      <td className="w-[14%] px-3 py-5">
+                        <Link
+                          href={`/cases/${item.case_id}/review`}
+                          className="inline-flex h-9 items-center justify-center rounded-md border border-slate-100 bg-white px-3 text-sm font-bold text-indigo-600 shadow-sm transition hover:border-indigo-100 hover:bg-indigo-50"
+                        >
+                          Open
+                        </Link>
                       </td>
                     </tr>
                   ))
@@ -239,12 +242,9 @@ export default function DepartmentsPage() {
             </table>
           </div>
 
-          <a
-            href="/departments"
-            className="mt-7 inline-flex text-base font-semibold text-indigo-600 hover:text-indigo-700"
-          >
-            View all action plans {"->"}
-          </a>
+          <p className="mt-7 text-sm text-slate-500">
+            Use the action detail view to upload affidavits, add department remarks, and submit compliance for review.
+          </p>
         </section>
       </div>
     </main>
@@ -308,50 +308,6 @@ function ProgressRing({ value }: { value: number }) {
   );
 }
 
-function groupActionPlans(actions: DeptAction[]): ActionPlanRow[] {
-  const grouped = new Map<string, DeptAction[]>();
-
-  for (const action of actions) {
-    const key = action.case_id || action.case_number;
-    const bucket = grouped.get(key) ?? [];
-    bucket.push(action);
-    grouped.set(key, bucket);
-  }
-
-  return Array.from(grouped.entries()).map(([key, bucket]) => {
-    const dueValues = bucket
-      .map((item) => item.deadline)
-      .filter((value): value is string => Boolean(value))
-      .sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
-    const dueDate = dueValues[0] ?? null;
-    const pendingActions = bucket.filter((item) => {
-      const days = daysUntil(item.deadline);
-      return days === null || days > 0;
-    }).length;
-    const directives = bucket.length;
-    const progress =
-      directives === 0
-        ? 0
-        : Math.round(((directives - pendingActions) / directives) * 100);
-    const status =
-      pendingActions === 0
-        ? "Completed"
-        : progress >= 50
-          ? "In Progress"
-          : "Pending";
-
-    return {
-      caseId: key,
-      caseTitle: bucket[0]?.case_number || key,
-      directives,
-      pendingActions,
-      dueDate,
-      status,
-      progress: Math.max(0, Math.min(progress, 100)),
-    };
-  });
-}
-
 function formatShortDate(value: string | null) {
   if (!value) return "-";
   return new Date(value).toLocaleDateString("en-US", {
@@ -367,4 +323,12 @@ function formatLongDate(value: string) {
     month: "short",
     year: "numeric",
   });
+}
+
+function labelForStatus(status: ActionPlan["status"]) {
+  return status
+    .toLowerCase()
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
