@@ -78,8 +78,8 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <main className="h-full overflow-y-auto bg-white">
-      <div className="mx-auto flex min-h-full w-full max-w-[1040px] flex-col px-8 py-8">
+    <main className="h-full overflow-y-auto bg-[#f5f7fb]">
+      <div className="mx-auto flex min-h-full w-full max-w-[1280px] flex-col px-8 py-8">
         <header className="flex items-start justify-between gap-6">
           <div>
             <h1 className="text-[28px] font-semibold leading-tight text-slate-950">

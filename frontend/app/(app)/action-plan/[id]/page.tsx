@@ -100,7 +100,7 @@ export default function ActionPlanDetailPage() {
 
   if (loading) {
     return (
-      <main className="flex h-full items-center justify-center bg-white text-sm text-slate-500">
+      <main className="flex h-full items-center justify-center bg-[#f5f7fb] text-sm text-slate-500">
         Loading action plan details
       </main>
     );
@@ -108,7 +108,7 @@ export default function ActionPlanDetailPage() {
 
   if (!plan) {
     return (
-      <main className="flex h-full items-center justify-center bg-white text-sm text-slate-500">
+      <main className="flex h-full items-center justify-center bg-[#f5f7fb] text-sm text-slate-500">
         Action plan not found
       </main>
     );

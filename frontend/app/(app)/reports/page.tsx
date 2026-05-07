@@ -83,7 +83,7 @@ export default function ReportsPage() {
   }
 
   return (
-    <main className="h-full overflow-y-auto bg-white">
+    <main className="h-full overflow-y-auto bg-[#f5f7fb]">
       <div className="mx-auto flex min-h-full w-full max-w-[1280px] flex-col px-8 py-8">
         <header className="max-w-4xl">
           <h1 className="text-[28px] font-semibold leading-tight text-slate-950">Reports</h1>

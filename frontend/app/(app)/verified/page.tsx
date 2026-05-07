@@ -75,8 +75,8 @@ export default function VerifiedCasesPage() {
   const totalPages = Math.max(1, Math.ceil(filteredCases.length / PAGE_SIZE));
   const visibleCases = filteredCases.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   return (
-    <main className="h-full overflow-y-auto bg-white">
-      <div className="mx-auto flex min-h-full w-full max-w-[1040px] flex-col px-8 py-8">
+    <main className="h-full overflow-y-auto bg-[#f5f7fb]">
+      <div className="mx-auto flex min-h-full w-full max-w-[1280px] flex-col px-8 py-8">
         <header>
           <h1 className="text-[28px] font-semibold leading-tight text-slate-950">Verified Cases</h1>
           <p className="mt-3 text-[15px] text-slate-500">

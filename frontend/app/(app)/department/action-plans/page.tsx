@@ -71,8 +71,8 @@ export default function DepartmentActionPlansPage() {
   }, [dateRange.endDate, dateRange.startDate, plans, priority, search, status]);
 
   return (
-    <main className="h-full overflow-y-auto bg-white">
-      <div className="mx-auto flex min-h-full w-full max-w-[1240px] flex-col px-8 py-8">
+    <main className="h-full overflow-y-auto bg-[#f5f7fb]">
+      <div className="mx-auto flex min-h-full w-full max-w-[1280px] flex-col px-8 py-8">
         <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
             <h1 className="text-[30px] font-semibold leading-tight text-slate-950">Department Action Plans</h1>

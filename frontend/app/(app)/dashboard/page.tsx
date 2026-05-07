@@ -22,7 +22,8 @@ export default function DashboardPage() {
   const counts = stats?.status_counts ?? {};
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <main className="h-full overflow-y-auto bg-[#f5f7fb]">
+      <div className="mx-auto w-full max-w-[1280px] space-y-6 px-8 py-8">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
@@ -83,6 +84,7 @@ export default function DashboardPage() {
           <StatusChart counts={counts} />
         </div>
       </div>
-    </div>
+      </div>
+    </main>
   );
 }
