@@ -4,11 +4,12 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import Any
 
 from app.core.database import get_db
-from app.models.base import User
+from app.core.security import hash_password
+from app.models.base import User, UserRole
 from app.routers.deps import get_current_user
 
 # Simple file-based settings store (upgrade to DB table as needed)
@@ -39,6 +40,43 @@ class UserOut(BaseModel):
     office_unit: str | None = None
 
     model_config = {"from_attributes": True}
+
+
+class AdminCreateUserRequest(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+    role: UserRole = UserRole.REVIEWER
+    department: str | None = None
+    designation: str | None = None
+    state: str | None = None
+    mobile: str | None = None
+    office_unit: str | None = None
+
+
+class AdminUpdateUserRequest(BaseModel):
+    name: str | None = None
+    email: EmailStr | None = None
+    role: UserRole | None = None
+    department: str | None = None
+    designation: str | None = None
+    state: str | None = None
+    mobile: str | None = None
+    office_unit: str | None = None
+
+
+def serialize_user(user: User) -> UserOut:
+    return UserOut(
+        id=str(user.id),
+        name=user.name,
+        email=user.email,
+        role=user.role.value if hasattr(user.role, "value") else str(user.role),
+        department=user.department,
+        designation=user.designation,
+        state=getattr(user, "state", None),
+        mobile=getattr(user, "mobile", None),
+        office_unit=getattr(user, "office_unit", None),
+    )
 
 
 @router.get("/settings")
@@ -94,17 +132,69 @@ async def list_users(
     """List all registered users. Admin only."""
     result = await db.execute(select(User).order_by(User.name))
     users = result.scalars().all()
-    return [
-        UserOut(
-            id=str(u.id),
-            name=u.name,
-            email=u.email,
-            role=u.role.value if hasattr(u.role, "value") else str(u.role),
-            department=u.department,
-            designation=u.designation,
-            state=getattr(u, "state", None),
-            mobile=getattr(u, "mobile", None),
-            office_unit=getattr(u, "office_unit", None),
-        )
-        for u in users
-    ]
+    return [serialize_user(u) for u in users]
+
+
+@router.post("/users", response_model=UserOut)
+async def create_user(
+    body: AdminCreateUserRequest,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    existing = await db.execute(select(User).where(User.email == body.email))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    user = User(
+        name=body.name,
+        email=body.email,
+        hashed_password=hash_password(body.password),
+        role=body.role,
+        department=body.department,
+        designation=body.designation,
+        state=body.state,
+        mobile=body.mobile,
+        office_unit=body.office_unit,
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return serialize_user(user)
+
+
+@router.patch("/users/{user_id}", response_model=UserOut)
+async def update_user(
+    user_id: str,
+    body: AdminUpdateUserRequest,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if body.email and body.email != user.email:
+        existing = await db.execute(select(User).where(User.email == body.email))
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="Email already registered")
+        user.email = body.email
+
+    if body.name is not None:
+        user.name = body.name
+    if body.role is not None:
+        user.role = body.role
+    if body.department is not None:
+        user.department = body.department
+    if body.designation is not None:
+        user.designation = body.designation
+    if body.state is not None:
+        user.state = body.state
+    if body.mobile is not None:
+        user.mobile = body.mobile
+    if body.office_unit is not None:
+        user.office_unit = body.office_unit
+
+    await db.commit()
+    await db.refresh(user)
+    return serialize_user(user)

@@ -106,6 +106,16 @@ export const api = {
 
   admin: {
     users: () => request<AdminUser[]>("/admin/users"),
+    createUser: (payload: AdminUserUpsert) =>
+      request<AdminUser>("/admin/users", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    updateUser: (id: string, payload: Partial<AdminUserUpsert>) =>
+      request<AdminUser>(`/admin/users/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      }),
     saveSettings: (settings: Record<string, unknown>) =>
       request("/admin/settings", {
         method: "POST",
@@ -232,6 +242,18 @@ export interface AdminUser {
   id: string;
   name: string;
   email: string;
+  role: "ADMIN" | "REVIEWER" | "DEPT_USER";
+  department?: string;
+  designation?: string;
+  state?: string;
+  mobile?: string;
+  office_unit?: string;
+}
+
+export interface AdminUserUpsert {
+  email: string;
+  name: string;
+  password?: string;
   role: "ADMIN" | "REVIEWER" | "DEPT_USER";
   department?: string;
   designation?: string;

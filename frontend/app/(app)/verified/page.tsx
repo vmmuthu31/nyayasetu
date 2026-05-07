@@ -1,129 +1,179 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Search, CheckCircle2, RefreshCw, Download } from "lucide-react";
-import { api, CaseListItem } from "@/lib/api";
-import { Badge } from "@/components/ui/Badge";
-import { formatDate } from "@/lib/utils";
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Loader2, Search } from "lucide-react";
+import { api, CaseDetail, CaseListItem } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
+const PAGE_SIZE = 5;
+
+type VerifiedCase = CaseListItem & {
+  department: string;
+  verifiedOn: string;
+};
+
 export default function VerifiedCasesPage() {
-  const [cases, setCases] = useState<CaseListItem[]>([]);
+  const [cases, setCases] = useState<VerifiedCase[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [department, setDepartment] = useState("");
+  const [page, setPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(() => {
-    setLoading(true);
-    setError(null);
-    api.cases
-      .list({ status: "VERIFIED", search: search || undefined })
-      .then(setCases)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [search]);
+  useEffect(() => {
+    void Promise.resolve().then(async () => {
+      setLoading(true);
+      setError(null);
 
-  useEffect(() => { load(); }, [load]);
+      try {
+        const items = await api.cases.list({ status: "VERIFIED", limit: 100 });
+        const enriched = await Promise.all(
+          items.map(async (item) => {
+            const detail = await api.cases.get(item.id).catch(() => null);
+            return toVerifiedCase(item, detail);
+          }),
+        );
+        setCases(enriched);
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        setLoading(false);
+      }
+    });
+  }, []);
+
+  const departments = useMemo(
+    () => Array.from(new Set(cases.map((item) => item.department))).filter(Boolean).sort(),
+    [cases],
+  );
+
+  const filteredCases = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return cases.filter((item) => {
+      const matchesSearch =
+        !needle ||
+        item.case_number.toLowerCase().includes(needle) ||
+        item.petitioners.toLowerCase().includes(needle) ||
+        item.court.toLowerCase().includes(needle);
+      const matchesDepartment = !department || item.department === department;
+      return matchesSearch && matchesDepartment;
+    });
+  }, [cases, department, search]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredCases.length / PAGE_SIZE));
+  const visibleCases = filteredCases.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const rangeLabel = useMemo(() => formatDateRange(cases), [cases]);
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Top bar */}
-      <div className="shrink-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold text-slate-900 leading-tight">Verified Cases</h1>
-            <p className="text-slate-500 text-xs">{loading ? "Loading…" : `${cases.length} verified case${cases.length !== 1 ? "s" : ""}`}</p>
-          </div>
-        </div>
+    <main className="h-full overflow-y-auto bg-white">
+      <div className="mx-auto flex min-h-full w-full max-w-[1040px] flex-col px-8 py-8">
+        <header>
+          <h1 className="text-[28px] font-semibold leading-tight text-slate-950">Verified Cases</h1>
+          <p className="mt-3 text-[15px] text-slate-500">
+            All verified cases with approved directives and action plans.
+          </p>
+        </header>
 
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+        <section className="mt-10 grid grid-cols-[minmax(190px,290px)_minmax(240px,280px)_1fr] gap-4">
+          <SelectShell value={department || "All Departments"}>
+            <select
+              value={department}
+              onChange={(event) => {
+                setDepartment(event.target.value);
+                setPage(1);
+              }}
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              aria-label="Filter by department"
+            >
+              <option value="">All Departments</option>
+              {departments.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </SelectShell>
+
+          <div className="flex h-[52px] items-center gap-3 rounded-md border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 shadow-sm">
+            <CalendarDays className="h-4 w-4 text-slate-400" />
+            <span className="truncate">{rangeLabel}</span>
+            <ChevronDown className="ml-auto h-4 w-4 text-slate-400" />
+          </div>
+
+          <div className="relative h-[52px] rounded-md border border-slate-200 bg-white shadow-sm">
+            <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
             <input
-              type="text"
-              placeholder="Search case / petitioner…"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 w-64"
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(1);
+              }}
+              placeholder="Search verified cases..."
+              className="h-full w-full rounded-md bg-transparent pl-12 pr-4 text-sm font-medium text-slate-700 outline-none placeholder:text-slate-400"
             />
           </div>
-          <button
-            onClick={load}
-            className="flex items-center gap-1.5 text-sm text-slate-600 border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50"
-          >
-            <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
-            Refresh
-          </button>
-        </div>
-      </div>
+        </section>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
         {error && (
-          <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{error}</div>
+          <div className="mt-5 rounded-md border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {error}
+          </div>
         )}
 
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>
-                {["Case No.", "Court", "Petitioners", "Directives", "Confidence", "Judgment Date", "Export", ""].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                    {h}
-                  </th>
-                ))}
+        <section className="mt-8 overflow-hidden bg-white">
+          <table className="w-full table-fixed text-left">
+            <thead>
+              <tr className="border-b border-slate-100">
+                {["CASE TITLE / COURT", "DEPARTMENT", "VERIFIED ON", "DIRECTIVES", "STATUS", "ACTIONS"].map(
+                  (heading) => (
+                    <th
+                      key={heading}
+                      className="px-4 py-4 text-xs font-bold uppercase tracking-wide text-slate-500"
+                    >
+                      {heading}
+                    </th>
+                  ),
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-slate-400">
-                    <div className="flex items-center justify-center gap-2">
-                      <RefreshCw className="w-4 h-4 animate-spin" /> Loading verified cases…
-                    </div>
+                  <td colSpan={6} className="px-4 py-16 text-center text-sm text-slate-400">
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading verified cases
+                    </span>
                   </td>
                 </tr>
-              ) : cases.length === 0 ? (
+              ) : visibleCases.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center">
-                    <CheckCircle2 className="w-10 h-10 text-slate-200 mx-auto mb-2" />
-                    <p className="text-slate-400 text-sm">No verified cases yet</p>
-                    <p className="text-slate-300 text-xs mt-1">Cases appear here once all directives are approved</p>
+                  <td colSpan={6} className="px-4 py-16 text-center text-sm text-slate-400">
+                    No verified cases found
                   </td>
                 </tr>
               ) : (
-                cases.map((c) => (
-                  <tr key={c.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3 font-mono font-medium text-emerald-700">{c.case_number}</td>
-                    <td className="px-4 py-3 text-slate-700 max-w-36 truncate">{c.court}</td>
-                    <td className="px-4 py-3 text-slate-600 max-w-44 truncate">{c.petitioners}</td>
-                    <td className="px-4 py-3 text-center">
-                      <span className="font-semibold text-slate-800">{c.directive_count}</span>
+                visibleCases.map((item) => (
+                  <tr key={item.id} className="text-sm text-slate-600">
+                    <td className="w-[36%] px-4 py-5">
+                      <p className="truncate text-[15px] font-semibold text-slate-900">{caseTitle(item)}</p>
+                      <p className="mt-1 truncate text-sm font-medium text-slate-500">{item.court}</p>
                     </td>
-                    <td className="px-4 py-3">
-                      <ConfidenceBar value={c.confidence_score} />
+                    <td className="w-[20%] px-4 py-5 font-medium text-slate-700">{item.department}</td>
+                    <td className="w-[16%] px-4 py-5 font-medium text-slate-500">{formatShortDate(item.verifiedOn)}</td>
+                    <td className="w-[12%] px-4 py-5 font-semibold text-slate-700">{item.directive_count}</td>
+                    <td className="w-[10%] px-4 py-5">
+                      <span className="rounded-md bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-600">
+                        Verified
+                      </span>
                     </td>
-                    <td className="px-4 py-3 text-slate-500 text-xs">{formatDate(c.judgment_date)}</td>
-                    <td className="px-4 py-3">
-                      <a
-                        href={api.cases.exportActionPlan(c.id)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800"
-                      >
-                        <Download className="w-3.5 h-3.5" /> Action Plan
-                      </a>
-                    </td>
-                    <td className="px-4 py-3">
+                    <td className="w-[8%] px-4 py-5">
                       <Link
-                        href={`/cases/${c.id}/review`}
-                        className="text-xs font-medium text-emerald-600 hover:text-emerald-800 hover:underline"
+                        href={`/cases/${item.id}/review`}
+                        className="inline-flex h-9 items-center justify-center rounded-md border border-slate-100 bg-white px-3 text-sm font-bold text-indigo-600 shadow-sm transition hover:border-indigo-100 hover:bg-indigo-50"
                       >
-                        View →
+                        View
                       </Link>
                     </td>
                   </tr>
@@ -131,21 +181,110 @@ export default function VerifiedCasesPage() {
               )}
             </tbody>
           </table>
-        </div>
+        </section>
+
+        <footer className="mt-7 flex items-center justify-between text-sm text-slate-500">
+          <p>
+            Showing {filteredCases.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1} to{" "}
+            {Math.min(page * PAGE_SIZE, filteredCases.length)} of {filteredCases.length}
+          </p>
+          <div className="flex items-center gap-2">
+            <PageButton disabled={page === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
+              <ChevronLeft className="h-4 w-4" />
+            </PageButton>
+            {Array.from({ length: Math.min(totalPages, 5) }, (_, index) => index + 1).map((pageNumber) => (
+              <PageButton key={pageNumber} active={pageNumber === page} onClick={() => setPage(pageNumber)}>
+                {pageNumber}
+              </PageButton>
+            ))}
+            <PageButton
+              disabled={page === totalPages}
+              onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </PageButton>
+          </div>
+        </footer>
       </div>
+    </main>
+  );
+}
+
+function SelectShell({ children, value }: { children: React.ReactNode; value: string }) {
+  return (
+    <div className="relative flex h-[52px] items-center justify-between rounded-md border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 shadow-sm">
+      <span className="truncate">{value}</span>
+      <ChevronDown className="h-4 w-4 text-slate-400" />
+      {children}
     </div>
   );
 }
 
-function ConfidenceBar({ value }: { value: number }) {
-  const pct = Math.round(value * 100);
-  const color = pct >= 75 ? "bg-emerald-500" : pct >= 50 ? "bg-amber-400" : "bg-red-400";
+function PageButton({
+  active,
+  children,
+  disabled,
+  onClick,
+}: {
+  active?: boolean;
+  children: React.ReactNode;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
   return (
-    <div className="flex items-center gap-2">
-      <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
-      </div>
-      <span className="text-xs text-slate-500">{pct}%</span>
-    </div>
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "flex h-10 min-w-10 items-center justify-center rounded-md border border-transparent px-3 text-sm font-semibold text-slate-500 transition",
+        active && "border-indigo-100 text-indigo-600 shadow-sm",
+        disabled ? "cursor-not-allowed opacity-40" : "hover:border-slate-100 hover:bg-slate-50",
+      )}
+    >
+      {children}
+    </button>
   );
+}
+
+function toVerifiedCase(item: CaseListItem, detail: CaseDetail | null): VerifiedCase {
+  const firstDepartment = detail?.directives.find((directive) => directive.department)?.department;
+  return {
+    ...item,
+    department: firstDepartment || departmentFromCourt(item.court),
+    verifiedOn: item.judgment_date || item.filed_at,
+  };
+}
+
+function departmentFromCourt(court: string) {
+  if (/municipal|urban|bombay/i.test(court)) return "Urban Development";
+  if (/finance|tax|revenue/i.test(court)) return "Revenue Department";
+  if (/supreme|union/i.test(court)) return "Finance Department";
+  if (/home|criminal|police/i.test(court)) return "Home Department";
+  return "Law Department";
+}
+
+function caseTitle(item: CaseListItem) {
+  if (item.petitioners && item.petitioners !== "Unknown") return item.petitioners;
+  return item.case_number;
+}
+
+function formatDateRange(items: VerifiedCase[]) {
+  if (items.length === 0) return "No verified dates";
+  const timestamps = items
+    .map((item) => new Date(item.verifiedOn).getTime())
+    .filter((value) => Number.isFinite(value))
+    .sort((a, b) => a - b);
+  if (timestamps.length === 0) return "No verified dates";
+  const start = formatShortDate(new Date(timestamps[0]).toISOString());
+  const end = formatShortDate(new Date(timestamps[timestamps.length - 1]).toISOString());
+  return `${start} - ${end}`;
+}
+
+function formatShortDate(value: string) {
+  return new Date(value).toLocaleDateString("en-US", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 }

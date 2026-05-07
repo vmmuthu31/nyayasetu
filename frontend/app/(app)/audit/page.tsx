@@ -1,134 +1,348 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { ShieldCheck, ShieldAlert, RefreshCw, ChevronRight } from "lucide-react";
-import { api, AuditEntry } from "@/lib/api";
+import { useEffect, useMemo, useState } from "react";
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { api, AdminUser, AuditEntry, CaseDetail } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
+const PAGE_SIZE = 5;
+
+type EnrichedAuditEntry = AuditEntry & {
+  actionLabel: string;
+  userLabel: string;
+  entityLabel: string;
+  detailsLabel: string;
+};
+
 export default function AuditPage() {
-  const [logs, setLogs] = useState<AuditEntry[]>([]);
-  const [chainStatus, setChainStatus] = useState<{ valid: boolean; total_records?: number } | null>(null);
+  const [logs, setLogs] = useState<EnrichedAuditEntry[]>([]);
+  const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [actionFilter, setActionFilter] = useState("");
+  const [userFilter, setUserFilter] = useState("");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
 
-  const load = () => {
-    setLoading(true);
-    Promise.all([api.audit.logs({ limit: 100 }), api.audit.verify()])
-      .then(([l, s]) => { setLogs(l); setChainStatus(s); })
-      .finally(() => setLoading(false));
-  };
+  useEffect(() => {
+    void Promise.resolve().then(async () => {
+      setLoading(true);
+      setError(null);
 
-  useEffect(() => { load(); }, []);
+      try {
+        const [auditLogs, adminUsers] = await Promise.all([
+          api.audit.logs({ limit: 100 }),
+          api.admin.users().catch(() => [] as AdminUser[]),
+        ]);
+
+        const caseIds = Array.from(new Set(auditLogs.map((item) => item.case_id).filter(Boolean))) as string[];
+        const caseEntries = await Promise.all(
+          caseIds.map(async (caseId) => [caseId, await api.cases.get(caseId).catch(() => null)] as const),
+        );
+        const caseMap = new Map<string, CaseDetail | null>(caseEntries);
+        const userMap = new Map(adminUsers.map((user) => [user.id, user]));
+
+        setUsers(adminUsers);
+        setLogs(auditLogs.map((entry) => enrichAuditEntry(entry, userMap, caseMap)));
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        setLoading(false);
+      }
+    });
+  }, []);
+
+  const actionOptions = useMemo(
+    () => Array.from(new Set(logs.map((item) => item.actionLabel))).filter(Boolean).sort(),
+    [logs],
+  );
+
+  const filteredLogs = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return logs.filter((item) => {
+      const matchesAction = !actionFilter || item.actionLabel === actionFilter;
+      const matchesUser = !userFilter || item.userLabel === userFilter;
+      const matchesSearch =
+        !needle ||
+        item.actionLabel.toLowerCase().includes(needle) ||
+        item.userLabel.toLowerCase().includes(needle) ||
+        item.entityLabel.toLowerCase().includes(needle) ||
+        item.detailsLabel.toLowerCase().includes(needle);
+      return matchesAction && matchesUser && matchesSearch;
+    });
+  }, [actionFilter, logs, search, userFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredLogs.length / PAGE_SIZE));
+  const visibleLogs = filteredLogs.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const dateRangeLabel = useMemo(() => formatAuditRange(logs), [logs]);
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Immutable Audit Trail</h1>
-          <p className="text-slate-500 text-sm mt-0.5">SHA-256 hash chain — tamper-evident log of all system events</p>
-        </div>
-        <button
-          onClick={load}
-          className="flex items-center gap-1.5 text-sm text-slate-600 border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50"
-        >
-          <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} /> Refresh
-        </button>
-      </div>
+    <main className="h-full overflow-y-auto bg-white">
+      <div className="mx-auto flex min-h-full w-full max-w-[1040px] flex-col px-8 py-8">
+        <header>
+          <h1 className="text-[28px] font-semibold leading-tight text-slate-950">Audit Trail</h1>
+          <p className="mt-3 text-[15px] text-slate-500">
+            Immutable log of all activities performed on the platform.
+          </p>
+        </header>
 
-      {/* Chain Integrity Banner */}
-      {chainStatus && (
-        <div className={cn(
-          "flex items-center gap-3 rounded-xl px-5 py-4",
-          chainStatus.valid ? "bg-emerald-50 border border-emerald-200" : "bg-red-50 border border-red-200"
-        )}>
-          {chainStatus.valid
-            ? <ShieldCheck className="w-6 h-6 text-emerald-600" />
-            : <ShieldAlert className="w-6 h-6 text-red-600" />
-          }
-          <div>
-            <p className={cn("font-semibold text-sm", chainStatus.valid ? "text-emerald-800" : "text-red-800")}>
-              {chainStatus.valid ? "Chain Integrity Verified" : "Chain Integrity Compromised!"}
-            </p>
-            <p className="text-xs text-slate-500">
-              {chainStatus.total_records ?? 0} records · Each = SHA-256(data + prev_hash)
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Log Table */}
-      <div className="card overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 border-b border-slate-200">
-            <tr>
-              {["Seq", "Event", "Case", "Hash", "Timestamp", ""].map((h) => (
-                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+        <section className="mt-10 grid grid-cols-[minmax(180px,220px)_minmax(180px,220px)_minmax(250px,290px)_1fr] gap-4">
+          <SelectShell value={actionFilter || "All Actions"}>
+            <select
+              value={actionFilter}
+              onChange={(event) => {
+                setActionFilter(event.target.value);
+                setPage(1);
+              }}
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              aria-label="Filter by action"
+            >
+              <option value="">All Actions</option>
+              {actionOptions.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
               ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {loading ? (
-              <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-400">
-                <RefreshCw className="w-4 h-4 animate-spin inline" />
-              </td></tr>
-            ) : logs.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-400">No audit logs yet</td></tr>
-            ) : logs.map((log) => (
-              <React.Fragment key={log.id}>
-                <tr
-                  className="hover:bg-slate-50 cursor-pointer"
-                  onClick={() => setExpanded(expanded === log.id ? null : log.id)}
-                >
-                  <td className="px-4 py-3 font-mono text-slate-500 text-xs">{log.sequence}</td>
-                  <td className="px-4 py-3">
-                    <EventBadge event={log.event} />
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-slate-500 max-w-24 truncate">
-                    {log.case_id ? log.case_id.slice(0, 8) + "…" : "—"}
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-slate-400 max-w-32 truncate" title={log.hash}>
-                    {log.hash.slice(0, 12)}…
-                  </td>
-                  <td className="px-4 py-3 text-xs text-slate-500">
-                    {new Date(log.created_at).toLocaleString("en-IN")}
-                  </td>
-                  <td className="px-4 py-3">
-                    <ChevronRight className={cn("w-4 h-4 text-slate-400 transition-transform", expanded === log.id && "rotate-90")} />
+            </select>
+          </SelectShell>
+
+          <SelectShell value={userFilter || "All Users"}>
+            <select
+              value={userFilter}
+              onChange={(event) => {
+                setUserFilter(event.target.value);
+                setPage(1);
+              }}
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              aria-label="Filter by user"
+            >
+              <option value="">All Users</option>
+              {users.map((item) => (
+                <option key={item.id} value={item.name}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </SelectShell>
+
+          <div className="flex h-[52px] items-center gap-3 rounded-md border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 shadow-sm">
+            <CalendarDays className="h-4 w-4 text-slate-400" />
+            <span className="truncate">{dateRangeLabel}</span>
+            <ChevronDown className="ml-auto h-4 w-4 text-slate-400" />
+          </div>
+
+          <div className="relative h-[52px] rounded-md border border-slate-200 bg-white shadow-sm">
+            <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+            <input
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(1);
+              }}
+              placeholder="Search logs..."
+              className="h-full w-full rounded-md bg-transparent pl-12 pr-4 text-sm font-medium text-slate-700 outline-none placeholder:text-slate-400"
+            />
+          </div>
+        </section>
+
+        {error && (
+          <div className="mt-5 rounded-md border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {error}
+          </div>
+        )}
+
+        <section className="mt-8 overflow-hidden bg-white">
+          <table className="w-full table-fixed text-left">
+            <thead>
+              <tr className="border-b border-slate-100">
+                {["TIMESTAMP", "USER", "ACTION", "ENTITY", "DETAILS", "HASH"].map((heading) => (
+                  <th
+                    key={heading}
+                    className="px-4 py-4 text-xs font-bold uppercase tracking-wide text-slate-500"
+                  >
+                    {heading}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-16 text-center text-sm text-slate-400">
+                    Loading audit logs
                   </td>
                 </tr>
-                {expanded === log.id && (
-                  <tr className="bg-slate-50">
-                    <td colSpan={6} className="px-6 py-4">
-                      <div className="font-mono text-xs text-slate-600 space-y-1">
-                        <p><span className="text-slate-400">hash:</span> {log.hash}</p>
-                        <p><span className="text-slate-400">prev_hash:</span> {log.prev_hash}</p>
-                        {log.details && (
-                          <p><span className="text-slate-400">details:</span> {JSON.stringify(log.details)}</p>
-                        )}
-                      </div>
-                    </td>
+              ) : visibleLogs.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-16 text-center text-sm text-slate-400">
+                    No audit logs found
+                  </td>
+                </tr>
+              ) : (
+                visibleLogs.map((item) => (
+                  <tr key={item.id} className="text-sm text-slate-600">
+                    <td className="w-[20%] px-4 py-5 font-medium text-slate-700">{formatAuditTimestamp(item.created_at)}</td>
+                    <td className="w-[16%] px-4 py-5 font-medium text-slate-700">{item.userLabel}</td>
+                    <td className="w-[16%] px-4 py-5 font-medium text-slate-700">{item.actionLabel}</td>
+                    <td className="w-[22%] px-4 py-5 font-medium text-slate-700">{item.entityLabel}</td>
+                    <td className="w-[18%] px-4 py-5 font-medium text-slate-500">{item.detailsLabel}</td>
+                    <td className="w-[8%] px-4 py-5 font-mono text-xs text-slate-400">{shortHash(item.hash)}</td>
                   </tr>
-                )}
-              </React.Fragment>
+                ))
+              )}
+            </tbody>
+          </table>
+        </section>
+
+        <footer className="mt-7 flex items-center justify-between text-sm text-slate-500">
+          <p>
+            Showing {filteredLogs.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1} to{" "}
+            {Math.min(page * PAGE_SIZE, filteredLogs.length)} of {filteredLogs.length}
+          </p>
+          <div className="flex items-center gap-2">
+            <PageButton disabled={page === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
+              <ChevronLeft className="h-4 w-4" />
+            </PageButton>
+            {Array.from({ length: Math.min(totalPages, 5) }, (_, index) => index + 1).map((pageNumber) => (
+              <PageButton key={pageNumber} active={pageNumber === page} onClick={() => setPage(pageNumber)}>
+                {pageNumber}
+              </PageButton>
             ))}
-          </tbody>
-        </table>
+            {totalPages > 5 && <span className="px-2 text-slate-400">...</span>}
+            {totalPages > 5 && (
+              <PageButton active={page === totalPages} onClick={() => setPage(totalPages)}>
+                {totalPages}
+              </PageButton>
+            )}
+            <PageButton
+              disabled={page === totalPages}
+              onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </PageButton>
+          </div>
+        </footer>
       </div>
+    </main>
+  );
+}
+
+function SelectShell({ children, value }: { children: React.ReactNode; value: string }) {
+  return (
+    <div className="relative flex h-[52px] items-center justify-between rounded-md border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 shadow-sm">
+      <span className="truncate">{value}</span>
+      <ChevronDown className="h-4 w-4 text-slate-400" />
+      {children}
     </div>
   );
 }
 
-const EVENT_STYLES: Record<string, string> = {
-  CASE_INGESTED: "bg-blue-100 text-blue-800",
-  DIRECTIVE_APPROVE: "bg-emerald-100 text-emerald-800",
-  DIRECTIVE_REJECT: "bg-red-100 text-red-800",
-  CASE_STATUS_CHANGED: "bg-violet-100 text-violet-800",
-};
-
-function EventBadge({ event }: { event: string }) {
+function PageButton({
+  active,
+  children,
+  disabled,
+  onClick,
+}: {
+  active?: boolean;
+  children: React.ReactNode;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
   return (
-    <span className={cn("badge", EVENT_STYLES[event] ?? "bg-slate-100 text-slate-700")}>
-      {event.replace(/_/g, " ")}
-    </span>
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "flex h-10 min-w-10 items-center justify-center rounded-md border border-transparent px-3 text-sm font-semibold text-slate-500 transition",
+        active && "border-indigo-100 text-indigo-600 shadow-sm",
+        disabled ? "cursor-not-allowed opacity-40" : "hover:border-slate-100 hover:bg-slate-50",
+      )}
+    >
+      {children}
+    </button>
   );
+}
+
+function enrichAuditEntry(
+  entry: AuditEntry,
+  userMap: Map<string, AdminUser>,
+  caseMap: Map<string, CaseDetail | null>,
+): EnrichedAuditEntry {
+  const detailsString = entry.details ? JSON.stringify(entry.details) : "";
+  return {
+    ...entry,
+    actionLabel: humanizeEvent(entry.event),
+    userLabel: userMap.get(entry.user_id ?? "")?.name ?? shortUser(entry.user_id),
+    entityLabel: caseMap.get(entry.case_id ?? "")?.case_number ?? systemEntity(entry),
+    detailsLabel: detailLabel(entry, detailsString),
+  };
+}
+
+function humanizeEvent(event: string) {
+  const mapped: Record<string, string> = {
+    CASE_INGESTED: "Uploaded Document",
+    DIRECTIVE_APPROVE: "Verified Directive",
+    DIRECTIVE_REJECT: "Rejected Directive",
+    CASE_STATUS_CHANGED: "Updated Action",
+    USER_LOGIN: "User Login",
+  };
+  return mapped[event] ?? event.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function detailLabel(entry: AuditEntry, detailsString: string) {
+  if (entry.event === "CASE_INGESTED") return "Document ingested";
+  if (entry.event === "DIRECTIVE_APPROVE") return "Directive verified";
+  if (entry.event === "CASE_STATUS_CHANGED") return "Action item updated";
+  if (detailsString.toLowerCase().includes("login")) return "Login successful";
+  return detailsString ? trim(detailsString, 28) : "-";
+}
+
+function systemEntity(entry: AuditEntry) {
+  if (!entry.case_id) return "System";
+  return shortHash(entry.case_id);
+}
+
+function shortUser(userId?: string) {
+  if (!userId) return "System";
+  return `User ${userId.slice(0, 6)}`;
+}
+
+function shortHash(value: string) {
+  return `${value.slice(0, 8)}...`;
+}
+
+function trim(value: string, max: number) {
+  return value.length > max ? `${value.slice(0, max - 3)}...` : value;
+}
+
+function formatAuditTimestamp(value: string) {
+  return new Date(value).toLocaleString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+function formatAuditRange(items: EnrichedAuditEntry[]) {
+  if (items.length === 0) return "No log dates";
+  const timestamps = items
+    .map((item) => new Date(item.created_at).getTime())
+    .filter((value) => Number.isFinite(value))
+    .sort((a, b) => a - b);
+  if (timestamps.length === 0) return "No log dates";
+  const start = formatRangeDate(timestamps[0]);
+  const end = formatRangeDate(timestamps[timestamps.length - 1]);
+  return `${start} - ${end}`;
+}
+
+function formatRangeDate(timestamp: number) {
+  return new Date(timestamp).toLocaleDateString("en-US", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 }
