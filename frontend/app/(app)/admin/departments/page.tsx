@@ -26,6 +26,7 @@ type DepartmentRow = DepartmentOption & {
 };
 
 const EMPTY_FORM: DepartmentUpsert = { name: "", code: "", email: "" };
+const PAGE_SIZE = 10;
 
 export default function AdminDepartmentsPage() {
   const [departments, setDepartments] = useState<DepartmentOption[]>([]);
@@ -35,6 +36,7 @@ export default function AdminDepartmentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All Status");
+  const [page, setPage] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDepartment, setEditingDepartment] = useState<DepartmentOption | null>(null);
   const [form, setForm] = useState<DepartmentUpsert>(EMPTY_FORM);
@@ -53,6 +55,7 @@ export default function AdminDepartmentsPage() {
       ]);
       setDepartments(departmentList);
       setSummary(departmentSummary);
+      setPage(1);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -97,6 +100,10 @@ export default function AdminDepartmentsPage() {
       return matchesSearch && matchesStatus;
     });
   }, [rows, search, statusFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const visibleRows = filteredRows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   const totalDepartments = rows.length;
   const activeDepartments = rows.filter((row) => row.active).length;
@@ -178,10 +185,19 @@ export default function AdminDepartmentsPage() {
           </div>
 
           <div className="mt-8 grid gap-4 xl:grid-cols-[minmax(0,1fr)_180px_auto_auto]">
-            <SearchField value={search} onChange={setSearch} />
+            <SearchField
+              value={search}
+              onChange={(value) => {
+                setSearch(value);
+                setPage(1);
+              }}
+            />
             <FilterSelect
               value={statusFilter}
-              onChange={setStatusFilter}
+              onChange={(value) => {
+                setStatusFilter(value);
+                setPage(1);
+              }}
               options={["All Status", "Active", "Inactive"]}
             />
             <button
@@ -197,6 +213,7 @@ export default function AdminDepartmentsPage() {
               onClick={() => {
                 setSearch("");
                 setStatusFilter("All Status");
+                setPage(1);
               }}
               className="inline-flex h-11 items-center justify-center text-sm font-medium text-indigo-600 transition hover:text-indigo-700"
             >
@@ -211,7 +228,7 @@ export default function AdminDepartmentsPage() {
           ) : null}
 
           <div className="mt-7 overflow-hidden rounded-[24px] border border-slate-200">
-            <table className="min-w-full table-fixed bg-white">
+            <table className="w-full table-fixed bg-white">
               <thead className="bg-slate-50">
                 <tr className="text-left text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">
                   <th className="w-[4%] px-4 py-4" />
@@ -242,7 +259,7 @@ export default function AdminDepartmentsPage() {
                     </td>
                   </tr>
                 ) : (
-                  filteredRows.map((row) => (
+                  visibleRows.map((row) => (
                     <tr key={row.id} className="text-sm text-slate-600">
                       <td className="px-4 py-5">
                         <ChevronRight className="h-4 w-4 text-slate-300" />
@@ -281,6 +298,31 @@ export default function AdminDepartmentsPage() {
                 )}
               </tbody>
             </table>
+          </div>
+
+          <div className="mt-6 flex items-center justify-between text-sm text-slate-500">
+            <p>
+              Showing {filteredRows.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1} to{" "}
+              {Math.min(safePage * PAGE_SIZE, filteredRows.length)} of {filteredRows.length} departments
+            </p>
+            <div className="flex items-center gap-3">
+              <div className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-sm">
+                10 / page
+              </div>
+              <PaginationButton disabled={safePage === 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>
+                Prev
+              </PaginationButton>
+              {Array.from({ length: totalPages }, (_, index) => index + 1)
+                .slice(Math.max(0, safePage - 3), Math.max(0, safePage - 3) + 5)
+                .map((pageNumber) => (
+                  <PaginationButton key={pageNumber} active={pageNumber === safePage} onClick={() => setPage(pageNumber)}>
+                    {pageNumber}
+                  </PaginationButton>
+                ))}
+              <PaginationButton disabled={safePage === totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))}>
+                Next
+              </PaginationButton>
+            </div>
           </div>
         </section>
       </div>
@@ -402,6 +444,33 @@ function FilterSelect({
         ))}
       </select>
     </div>
+  );
+}
+
+function PaginationButton({
+  active,
+  children,
+  disabled,
+  onClick,
+}: {
+  active?: boolean;
+  children: React.ReactNode;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "inline-flex h-10 min-w-10 items-center justify-center rounded-xl border px-3 text-sm font-semibold transition",
+        active ? "border-indigo-200 bg-indigo-50 text-indigo-600" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+        disabled && "cursor-not-allowed opacity-40",
+      )}
+    >
+      {children}
+    </button>
   );
 }
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Download, FileSpreadsheet, FileText, X } from "lucide-react";
-import { api, DeptSummary, ReportExportRequest } from "@/lib/api";
+import { api, ReportExportRequest } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 
 type ReportCard = {
@@ -22,7 +22,7 @@ const REPORT_CARDS: ReportCard[] = [
 
 export default function ReportsPage() {
   const { user } = useAuth();
-  const [departments, setDepartments] = useState<DeptSummary[]>([]);
+  const [departments, setDepartments] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +40,13 @@ export default function ReportsPage() {
       setLoading(true);
       setError(null);
       try {
-        setDepartments(await api.departments.summary().catch(() => [] as DeptSummary[]));
+        const [options, summary] = await Promise.all([
+          api.auth.options().catch(() => null),
+          api.departments.summary().catch(() => []),
+        ]);
+        const optionNames = options?.departments.map((department) => department.name) ?? [];
+        const summaryNames = summary.map((item) => item.department);
+        setDepartments(Array.from(new Set([...optionNames, ...summaryNames])).sort());
       } catch (e) {
         setError((e as Error).message);
       } finally {
@@ -50,7 +56,7 @@ export default function ReportsPage() {
   }, [user]);
 
   const departmentOptions = useMemo(
-    () => Array.from(new Set(departments.map((item) => item.department))).sort(),
+    () => departments,
     [departments],
   );
 
@@ -78,8 +84,8 @@ export default function ReportsPage() {
 
   return (
     <main className="h-full overflow-y-auto bg-white">
-      <div className="mx-auto flex min-h-full w-full max-w-[1120px] flex-col px-8 py-8">
-        <header>
+      <div className="mx-auto flex min-h-full w-full max-w-[1280px] flex-col px-8 py-8">
+        <header className="max-w-4xl">
           <h1 className="text-[28px] font-semibold leading-tight text-slate-950">Reports</h1>
           <p className="mt-3 max-w-3xl text-[15px] text-slate-500">
             Generate downloadable compliance documents with filters, export metadata, and backend audit logging for each report run.
@@ -126,7 +132,7 @@ export default function ReportsPage() {
 
       {selectedReport ? (
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-2xl rounded-[28px] border border-slate-200 bg-white p-7 shadow-[0_32px_90px_-40px_rgba(15,23,42,0.45)]">
+          <div className="w-full max-w-3xl rounded-[28px] border border-slate-200 bg-white p-7 shadow-[0_32px_90px_-40px_rgba(15,23,42,0.45)]">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-2xl font-semibold text-slate-950">Generate Report</h2>
