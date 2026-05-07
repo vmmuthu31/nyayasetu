@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronLeft, ChevronRight, Download, Search } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Search,
+} from "lucide-react";
 import { api, AuditEntry, CaseDetail, CaseListItem } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
@@ -43,12 +49,20 @@ export default function DownloadsPage() {
       try {
         const [verifiedCases, logs] = await Promise.all([
           api.cases.list({ status: "VERIFIED", limit: 100 }),
-          can(user, "view_audit") ? api.audit.logs({ limit: 50 }).catch(() => [] as AuditEntry[]) : Promise.resolve([] as AuditEntry[]),
+          can(user, "view_audit")
+            ? api.audit.logs({ limit: 50 }).catch(() => [] as AuditEntry[])
+            : Promise.resolve([] as AuditEntry[]),
         ]);
         setCases(verifiedCases);
         setAuditLogs(logs);
         const pairs = await Promise.all(
-          verifiedCases.map(async (item) => [item.id, await api.cases.get(item.id).catch(() => null)] as const),
+          verifiedCases.map(
+            async (item) =>
+              [
+                item.id,
+                await api.cases.get(item.id).catch(() => null),
+              ] as const,
+          ),
         );
         setDetails(Object.fromEntries(pairs));
       } catch (e) {
@@ -88,25 +102,34 @@ export default function DownloadsPage() {
         item.department.toLowerCase().includes(needle);
       const itemDate = new Date(item.date).getTime();
       const afterStart =
-        !dateRange.startDate || itemDate >= new Date(dateRange.startDate).getTime();
+        !dateRange.startDate ||
+        itemDate >= new Date(dateRange.startDate).getTime();
       const beforeEnd =
-        !dateRange.endDate || itemDate <= new Date(`${dateRange.endDate}T23:59:59`).getTime();
+        !dateRange.endDate ||
+        itemDate <= new Date(`${dateRange.endDate}T23:59:59`).getTime();
       return matchesDepartment && matchesSearch && afterStart && beforeEnd;
     });
   }, [dateRange.endDate, dateRange.startDate, department, items, search]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
-  const visibleItems = filteredItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const availableTabs = (["Documents", "Extracts", "Action Plans", "Audit Logs"] as const).filter(
-    (item) => item !== "Audit Logs" || can(user, "view_audit"),
+  const visibleItems = filteredItems.slice(
+    (page - 1) * PAGE_SIZE,
+    page * PAGE_SIZE,
   );
+  const availableTabs = (
+    ["Documents", "Extracts", "Action Plans", "Audit Logs"] as const
+  ).filter((item) => item !== "Audit Logs" || can(user, "view_audit"));
 
   return (
     <main className="h-full overflow-y-auto bg-[#f5f7fb]">
       <div className="mx-auto flex min-h-full w-full max-w-[1280px] flex-col px-8 py-8">
         <header>
-          <h1 className="text-[28px] font-semibold leading-tight text-slate-950">Downloads</h1>
-          <p className="mt-3 text-[15px] text-slate-500">Download documents, reports, and extracts.</p>
+          <h1 className="text-[28px] font-semibold leading-tight text-slate-950">
+            Downloads
+          </h1>
+          <p className="mt-3 text-[15px] text-slate-500">
+            Download documents, reports, and extracts.
+          </p>
         </header>
 
         <div className="mt-8 flex items-center gap-8 border-b border-slate-100">
@@ -149,7 +172,11 @@ export default function DownloadsPage() {
             </select>
           </SelectShell>
 
-          <DateRangeFilter label="Download date range" value={dateRange} onChange={setDateRange} />
+          <DateRangeFilter
+            label="Download date range"
+            value={dateRange}
+            onChange={setDateRange}
+          />
 
           <div className="relative h-[52px] rounded-md border border-slate-200 bg-white shadow-sm">
             <Search className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-slate-400" />
@@ -175,7 +202,14 @@ export default function DownloadsPage() {
           <table className="w-full table-fixed text-left">
             <thead>
               <tr className="border-b border-slate-100">
-                {["FILE NAME", "TYPE", "DEPARTMENT", "DATE", "SIZE", "ACTIONS"].map((heading) => (
+                {[
+                  "FILE NAME",
+                  "TYPE",
+                  "DEPARTMENT",
+                  "DATE",
+                  "SIZE",
+                  "ACTIONS",
+                ].map((heading) => (
                   <th
                     key={heading}
                     className="px-4 py-4 text-xs font-bold uppercase tracking-wide text-slate-500"
@@ -188,24 +222,40 @@ export default function DownloadsPage() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-16 text-center text-sm text-slate-400">
+                  <td
+                    colSpan={6}
+                    className="px-4 py-16 text-center text-sm text-slate-400"
+                  >
                     Loading download items
                   </td>
                 </tr>
               ) : visibleItems.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-16 text-center text-sm text-slate-400">
+                  <td
+                    colSpan={6}
+                    className="px-4 py-16 text-center text-sm text-slate-400"
+                  >
                     No download items found
                   </td>
                 </tr>
               ) : (
                 visibleItems.map((item) => (
                   <tr key={item.id} className="text-sm text-slate-600">
-                    <td className="w-[36%] px-4 py-5 font-medium text-slate-800">{item.fileName}</td>
-                    <td className="w-[12%] px-4 py-5 font-medium text-slate-700">{item.type}</td>
-                    <td className="w-[18%] px-4 py-5 font-medium text-slate-700">{item.department}</td>
-                    <td className="w-[14%] px-4 py-5 font-medium text-slate-500">{formatShortDate(item.date)}</td>
-                    <td className="w-[10%] px-4 py-5 font-medium text-slate-500">{item.size}</td>
+                    <td className="w-[36%] px-4 py-5 font-medium text-slate-800">
+                      {item.fileName.slice(0, 20)}...
+                    </td>
+                    <td className="w-[12%] px-4 py-5 font-medium text-slate-700">
+                      {item.type}
+                    </td>
+                    <td className="w-[18%] px-4 py-5 font-medium text-slate-700">
+                      {item.department}
+                    </td>
+                    <td className="w-[14%] px-4 py-5 font-medium text-slate-500">
+                      {formatShortDate(item.date)}
+                    </td>
+                    <td className="w-[10%] px-4 py-5 font-medium text-slate-500">
+                      {item.size}
+                    </td>
                     <td className="w-[10%] px-4 py-5">
                       <button
                         type="button"
@@ -225,19 +275,36 @@ export default function DownloadsPage() {
 
         <footer className="mt-7 flex items-center justify-between text-sm text-slate-500">
           <p>
-            Showing {filteredItems.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1} to{" "}
-            {Math.min(page * PAGE_SIZE, filteredItems.length)} of {filteredItems.length}
+            Showing{" "}
+            {filteredItems.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1} to{" "}
+            {Math.min(page * PAGE_SIZE, filteredItems.length)} of{" "}
+            {filteredItems.length}
           </p>
           <div className="flex items-center gap-2">
-            <PageButton disabled={page === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
+            <PageButton
+              disabled={page === 1}
+              onClick={() => setPage((value) => Math.max(1, value - 1))}
+            >
               <ChevronLeft className="size-4" />
             </PageButton>
-            {Array.from({ length: Math.min(totalPages, 5) }, (_, index) => index + 1).map((pageNumber) => (
-              <PageButton key={pageNumber} active={pageNumber === page} onClick={() => setPage(pageNumber)}>
+            {Array.from(
+              { length: Math.min(totalPages, 5) },
+              (_, index) => index + 1,
+            ).map((pageNumber) => (
+              <PageButton
+                key={pageNumber}
+                active={pageNumber === page}
+                onClick={() => setPage(pageNumber)}
+              >
                 {pageNumber}
               </PageButton>
             ))}
-            <PageButton disabled={page === totalPages} onClick={() => setPage((value) => Math.min(totalPages, value + 1))}>
+            <PageButton
+              disabled={page === totalPages}
+              onClick={() =>
+                setPage((value) => Math.min(totalPages, value + 1))
+              }
+            >
               <ChevronRight className="size-4" />
             </PageButton>
           </div>
@@ -264,7 +331,13 @@ function buildDownloadItems(
       onDownload: () =>
         downloadCsv(`audit_${item.sequence}.csv`, [
           ["timestamp", "event", "case_id", "user_id", "hash"],
-          [item.created_at, item.event, item.case_id ?? "", item.user_id ?? "", item.hash],
+          [
+            item.created_at,
+            item.event,
+            item.case_id ?? "",
+            item.user_id ?? "",
+            item.hash,
+          ],
         ]),
     }));
   }
@@ -272,7 +345,9 @@ function buildDownloadItems(
   return cases.map((item) => {
     const detail = details[item.id];
     const department = caseDepartment(detail, item.court);
-    const directivesText = detail?.directives.map((directive) => directive.text).join("\n\n") ?? item.petitioners;
+    const directivesText =
+      detail?.directives.map((directive) => directive.text).join("\n\n") ??
+      item.petitioners;
 
     if (tab === "Documents") {
       return {
@@ -297,7 +372,11 @@ function buildDownloadItems(
         department,
         date: item.judgment_date || item.filed_at,
         size: `${Math.max(1, Math.ceil(directivesText.length / 1024))} KB`,
-        onDownload: () => downloadText(`Extract_${safeName(item.case_number)}.txt`, directivesText),
+        onDownload: () =>
+          downloadText(
+            `Extract_${safeName(item.case_number)}.txt`,
+            directivesText,
+          ),
       };
     }
 
@@ -308,13 +387,20 @@ function buildDownloadItems(
       department,
       date: item.judgment_date || item.filed_at,
       size: `${Math.max(1, item.directive_count)}.1 MB`,
-      onDownload: () => window.open(api.cases.exportActionPlan(item.id), "_blank"),
+      onDownload: () =>
+        window.open(api.cases.exportActionPlan(item.id), "_blank"),
     };
   });
 }
 
-function caseDepartment(detail: CaseDetail | null | undefined, fallbackCourt: string) {
-  return detail?.directives.find((directive) => directive.department)?.department ?? departmentFromCourt(fallbackCourt);
+function caseDepartment(
+  detail: CaseDetail | null | undefined,
+  fallbackCourt: string,
+) {
+  return (
+    detail?.directives.find((directive) => directive.department)?.department ??
+    departmentFromCourt(fallbackCourt)
+  );
 }
 
 function departmentFromCourt(court: string) {
@@ -335,7 +421,11 @@ function downloadText(filename: string, text: string) {
 }
 
 function downloadCsv(filename: string, rows: string[][]) {
-  const csv = rows.map((row) => row.map((value) => `"${value.replaceAll('"', '""')}"`).join(",")).join("\n");
+  const csv = rows
+    .map((row) =>
+      row.map((value) => `"${value.replaceAll('"', '""')}"`).join(","),
+    )
+    .join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   triggerDownload(filename, blob);
 }
@@ -357,7 +447,13 @@ function formatShortDate(value: string) {
   });
 }
 
-function SelectShell({ children, value }: { children: React.ReactNode; value: string }) {
+function SelectShell({
+  children,
+  value,
+}: {
+  children: React.ReactNode;
+  value: string;
+}) {
   return (
     <div className="relative flex h-[52px] items-center justify-between rounded-md border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 shadow-sm">
       <span className="truncate">{value}</span>
@@ -386,7 +482,9 @@ function PageButton({
       className={cn(
         "flex h-10 min-w-10 items-center justify-center rounded-md border border-transparent px-3 text-sm font-semibold text-slate-500 transition",
         active && "border-indigo-100 text-indigo-600 shadow-sm",
-        disabled ? "cursor-not-allowed opacity-40" : "hover:border-slate-100 hover:bg-slate-50",
+        disabled
+          ? "cursor-not-allowed opacity-40"
+          : "hover:border-slate-100 hover:bg-slate-50",
       )}
     >
       {children}

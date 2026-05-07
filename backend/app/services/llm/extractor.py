@@ -5,6 +5,7 @@ Raw PDF bytes are never sent — only extracted text chunks.
 """
 import json
 import logging
+import re
 from dataclasses import dataclass
 
 from groq import Groq
@@ -202,7 +203,7 @@ def _empty_result(text: str, reason: str) -> ExtractedCase:
         respondents="",
         judgment_date=None,
         directives=[],
-        raw_response=f'{{"_fallback_reason": "{reason}"}}',
+        raw_response=json.dumps({"_fallback_reason": reason}),
     )
 
 
@@ -219,32 +220,60 @@ def extract_case_entities(text: str, max_chars: int = 12000) -> ExtractedCase:
     if client is None:
         return _empty_result(text, "groq_api_key not configured")
 
+    if not settings.groq_api_key or not settings.groq_api_key.startswith("gsk_"):
+        return _empty_result(text, "groq_api_key invalid format")
+
     truncated = text[:max_chars]
+    log.debug(f"Sending {len(truncated)} chars to Groq model: {settings.groq_model}")
 
     try:
+        log.debug(f"Creating Groq API request...")
+        prompt = EXTRACTION_PROMPT.replace("{text}", truncated)
         response = client.chat.completions.create(
             model=settings.groq_model,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user",   "content": EXTRACTION_PROMPT.format(text=truncated)},
+                {"role": "user",   "content": prompt},
             ],
             temperature=0.1,
             max_tokens=2048,
-            response_format={"type": "json_object"},
         )
+        log.debug(f"Groq response received: status OK, {len(response.choices)} choices")
+    except KeyError as e:
+        import traceback
+        log.error(f"Groq KeyError: {str(e)}\nTraceback: {traceback.format_exc()}")
+        return _empty_result(text, f"groq_response_error: KeyError({str(e)})")
     except Exception as e:
+        import traceback
+        log.error(f"Groq API error: {type(e).__name__}: {str(e)}\nTraceback: {traceback.format_exc()}")
         return _empty_result(text, f"groq_api_error: {type(e).__name__}")
 
-    raw = response.choices[0].message.content or "{}"
+    try:
+        raw = response.choices[0].message.content or "{}"
+    except (AttributeError, IndexError, KeyError) as e:
+        log.error(f"Failed to extract response content: {type(e).__name__}: {str(e)}")
+        return _empty_result(text, f"groq_response_parse_error: {type(e).__name__}")
 
     try:
         data = json.loads(raw)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
         clean = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
         try:
             data = json.loads(clean)
         except json.JSONDecodeError:
-            data = {}
+            try:
+                cleaned = re.sub(r'"\n\s+"', '"', clean)
+                cleaned = re.sub(r'"\n\s*', '"', cleaned)
+                cleaned = re.sub(r'\n\s+', ' ', cleaned)
+                data = json.loads(cleaned)
+                log.debug("Parsed JSON after newline cleanup")
+            except json.JSONDecodeError:
+                log.error(f"Failed to parse JSON response: {raw[:200]}...")
+                data = {}
+
+    directives_list = data.get("directives") or []
+    if not isinstance(directives_list, list):
+        directives_list = []
 
     return ExtractedCase(
         # Prefer null/empty over fake placeholders — UI renders "—" when blank
@@ -253,6 +282,6 @@ def extract_case_entities(text: str, max_chars: int = 12000) -> ExtractedCase:
         petitioners=(data.get("petitioners") or "").strip(),
         respondents=(data.get("respondents") or "").strip(),
         judgment_date=data.get("judgment_date"),
-        directives=data.get("directives") or [],
+        directives=directives_list,
         raw_response=raw,
     )

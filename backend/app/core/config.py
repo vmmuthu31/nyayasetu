@@ -30,6 +30,16 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        case_sensitive = False
 
 
 settings = Settings()
+
+if settings.groq_api_key and settings.groq_api_key.startswith("gsk_"):
+    import logging
+    log = logging.getLogger(__name__)
+    log.info("Groq API key loaded successfully")
+else:
+    import logging
+    log = logging.getLogger(__name__)
+    log.warning(f"Groq API key status: {bool(settings.groq_api_key)} - {settings.groq_api_key[:20] if settings.groq_api_key else 'empty'}")
