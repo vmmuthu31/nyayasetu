@@ -160,16 +160,18 @@ async def get_stats(
     current_user: User = Depends(get_current_user),
 ):
     if _is_department_user(current_user):
-        count_q = select(
-            func.count(func.distinct(Case.id)).filter(Case.status == CaseStatus.PENDING_REVIEW).label("pending"),
-            func.count(func.distinct(Case.id)).filter(Case.status == CaseStatus.VERIFIED).label("verified"),
-            func.count(func.distinct(Case.id)).filter(Case.status == CaseStatus.ACTIONED).label("actioned"),
-            func.count(func.distinct(Case.id)).filter(Case.status == CaseStatus.APPEALED).label("appealed"),
-            func.count(func.distinct(Case.id)).filter(Case.status == CaseStatus.REJECTED).label("rejected"),
+        count_q = (
+            select(
+                func.count(func.distinct(Case.id)).filter(Case.status == CaseStatus.PENDING_REVIEW).label("pending"),
+                func.count(func.distinct(Case.id)).filter(Case.status == CaseStatus.VERIFIED).label("verified"),
+                func.count(func.distinct(Case.id)).filter(Case.status == CaseStatus.ACTIONED).label("actioned"),
+                func.count(func.distinct(Case.id)).filter(Case.status == CaseStatus.APPEALED).label("appealed"),
+                func.count(func.distinct(Case.id)).filter(Case.status == CaseStatus.REJECTED).label("rejected"),
+            )
+            .join(Case, Directive.case_id == Case.id)
+            .where(Directive.department == current_user.department)
+            .where(Case.status.in_([CaseStatus.VERIFIED, CaseStatus.ACTIONED, CaseStatus.APPEALED]))
         )
-        .join(Case, Directive.case_id == Case.id)
-        .where(Directive.department == current_user.department)
-        .where(Case.status.in_([CaseStatus.VERIFIED, CaseStatus.ACTIONED, CaseStatus.APPEALED]))
     else:
         count_q = select(
             func.count(Case.id).filter(Case.status == CaseStatus.PENDING_REVIEW).label("pending"),

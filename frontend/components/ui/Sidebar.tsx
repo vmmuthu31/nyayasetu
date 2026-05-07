@@ -16,7 +16,6 @@ import {
   TbSettings,
   TbChevronRight,
   TbLogout,
-  TbLifebuoy,
   TbLayoutSidebarLeftCollapse,
   TbLayoutSidebarLeftExpand,
   TbClock,

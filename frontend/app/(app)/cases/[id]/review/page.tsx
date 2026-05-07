@@ -13,6 +13,7 @@ import {
 import { api, CaseDetail, Directive, AuditEntry } from "@/lib/api";
 import { formatDate, cn, daysUntil } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
+import { can } from "@/lib/rbac";
 
 /* ─── Confidence helpers ─────────────────────────────────── */
 
@@ -54,12 +55,16 @@ export default function ReviewPage() {
   const [pdfUrl,     setPdfUrl]     = useState<string | null>(null);
   const [activeTab,  setActiveTab]  = useState<"pdf" | "text" | "blocks">("pdf");
   const [auditLogs,  setAuditLogs]  = useState<AuditEntry[]>([]);
+  const canReview = can(user, "review_directive");
+  const canViewAudit = can(user, "view_audit");
 
   useEffect(() => {
     Promise.all([
       api.cases.get(id),
       api.cases.pdfUrl(id).catch(() => ({ url: null })),
-      api.audit.logs({ case_id: id, limit: 5 }),
+      canViewAudit
+        ? api.audit.logs({ case_id: id, limit: 5 }).catch(() => [] as AuditEntry[])
+        : Promise.resolve([] as AuditEntry[]),
     ]).then(([c, pdf, logs]) => {
       setCaseData(c);
       const first = c.directives.find((d) => d.status === "PENDING_REVIEW") ?? c.directives[0];
@@ -68,7 +73,7 @@ export default function ReviewPage() {
       setAuditLogs(logs);
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, [id]);
+  }, [canViewAudit, id]);
 
   const showToast = (msg: string, ok: boolean) => {
     setToast({ msg, ok });
@@ -97,7 +102,9 @@ export default function ReviewPage() {
       setEditingId(null);
       setNotes("");
       // Refresh audit
-      api.audit.logs({ case_id: id, limit: 5 }).then(setAuditLogs).catch(() => {});
+      if (canViewAudit) {
+        api.audit.logs({ case_id: id, limit: 5 }).then(setAuditLogs).catch(() => {});
+      }
     } catch (e: unknown) {
       showToast((e as Error).message, false);
     } finally {
@@ -245,13 +252,15 @@ export default function ReviewPage() {
                   <ExternalLink className="w-3.5 h-3.5" /> Open PDF
                 </a>
               )}
-              <button
-                onClick={handleSubmitAll}
-                disabled={submitting}
-                className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-lg transition-colors shadow-sm"
-              >
-                <CheckCheck className="w-3.5 h-3.5" /> Submit Verified
-              </button>
+              {canReview && (
+                <button
+                  onClick={handleSubmitAll}
+                  disabled={submitting}
+                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-lg transition-colors shadow-sm"
+                >
+                  <CheckCheck className="w-3.5 h-3.5" /> Submit Verified
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -440,7 +449,7 @@ export default function ReviewPage() {
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-bold text-slate-800">Extracted Fields</h2>
               <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-indigo-600 text-white">
-                Review Mode
+                {canReview ? "Review Mode" : "Assigned Case View"}
               </span>
             </div>
 
@@ -511,12 +520,14 @@ export default function ReviewPage() {
                           : <><AlertCircle className="w-3 h-3" /> {cb.label}</>}
                       </span>
                       <span className="text-[10px] text-slate-400">{cb.pct}%</span>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setEditingId(isEditing ? null : d.id); setEditForm(d); setSelected(d); }}
-                        className="text-xs text-slate-400 hover:text-indigo-600 px-2 py-0.5 border border-slate-200 hover:border-indigo-300 rounded-md transition-colors"
-                      >
-                        Edit
-                      </button>
+                      {canReview && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setEditingId(isEditing ? null : d.id); setEditForm(d); setSelected(d); }}
+                          className="text-xs text-slate-400 hover:text-indigo-600 px-2 py-0.5 border border-slate-200 hover:border-indigo-300 rounded-md transition-colors"
+                        >
+                          Edit
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -525,7 +536,7 @@ export default function ReviewPage() {
                     <div className="bg-white border-t border-slate-100 divide-y divide-slate-100">
                       {/* Department */}
                       <SubFieldRow label="Responsible Department" value={
-                        isEditing ? (
+                        canReview && isEditing ? (
                           <input
                             value={editForm.department ?? d.department}
                             onChange={(e) => setEditForm(f => ({ ...f, department: e.target.value }))}
@@ -536,7 +547,7 @@ export default function ReviewPage() {
 
                       {/* Deadline */}
                       <SubFieldRow label={d.deadline_text ? "Timeline" : "Due Date"} value={
-                        isEditing ? (
+                        canReview && isEditing ? (
                           <input
                             type="date"
                             value={editForm.deadline ? editForm.deadline.split("T")[0] : ""}
@@ -548,7 +559,7 @@ export default function ReviewPage() {
 
                       {/* Action type */}
                       <SubFieldRow label="Action Type" value={
-                        isEditing ? (
+                        canReview && isEditing ? (
                           <select
                             value={editForm.action_type ?? d.action_type}
                             onChange={(e) => setEditForm(f => ({ ...f, action_type: e.target.value }))}
@@ -574,7 +585,7 @@ export default function ReviewPage() {
                       )}
 
                       {/* Approve / Reject buttons */}
-                      {d.status === "PENDING_REVIEW" && (
+                      {canReview && d.status === "PENDING_REVIEW" && (
                         <div className="px-4 py-3 flex items-center gap-2 bg-slate-50/50">
                           {isEditing && (
                             <textarea
@@ -678,13 +689,18 @@ export default function ReviewPage() {
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">Audit Trail</h3>
-                <Link href="/audit" className="text-[10px] text-indigo-600 hover:underline">View All</Link>
+                {canViewAudit && (
+                  <Link href="/audit" className="text-[10px] text-indigo-600 hover:underline">View All</Link>
+                )}
               </div>
               <div className="space-y-3">
-                {auditLogs.length === 0 && (
+                {!canViewAudit && (
+                  <p className="text-xs text-slate-400">Audit trail is limited for this role.</p>
+                )}
+                {canViewAudit && auditLogs.length === 0 && (
                   <p className="text-xs text-slate-400">No audit entries yet</p>
                 )}
-                {auditLogs.map((log) => (
+                {canViewAudit && auditLogs.map((log) => (
                   <div key={log.id} className="flex items-start gap-2">
                     <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 text-[10px] font-bold shrink-0">
                       {log.user_id ? initials : "S"}
