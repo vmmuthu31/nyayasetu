@@ -59,7 +59,10 @@ export default function AdminUsersPage() {
   }, [roleFilter, search, users]);
 
   const totalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
-  const visibleUsers = filteredUsers.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const visibleUsers = filteredUsers.slice(
+    (page - 1) * PAGE_SIZE,
+    page * PAGE_SIZE,
+  );
 
   async function loadUsers() {
     setLoading(true);
@@ -79,8 +82,12 @@ export default function AdminUsersPage() {
       <div className="mx-auto flex min-h-full w-full max-w-[1040px] flex-col px-8 py-8">
         <header className="flex items-start justify-between gap-6">
           <div>
-            <h1 className="text-[28px] font-semibold leading-tight text-slate-950">Users</h1>
-            <p className="mt-3 text-[15px] text-slate-500">Manage system users and their roles.</p>
+            <h1 className="text-[28px] font-semibold leading-tight text-slate-950">
+              Users
+            </h1>
+            <p className="mt-3 text-[15px] text-slate-500">
+              Manage system users and their roles.
+            </p>
           </div>
           <button
             type="button"
@@ -93,7 +100,9 @@ export default function AdminUsersPage() {
         </header>
 
         <section className="mt-10 grid grid-cols-[minmax(180px,220px)_1fr] gap-4">
-          <SelectShell value={roleFilter ? ROLE_LABELS[roleFilter] : "All Roles"}>
+          <SelectShell
+            value={roleFilter ? ROLE_LABELS[roleFilter] : "All Roles"}
+          >
             <select
               value={roleFilter}
               onChange={(event) => {
@@ -134,7 +143,14 @@ export default function AdminUsersPage() {
           <table className="w-full table-fixed text-left">
             <thead>
               <tr className="border-b border-slate-100">
-                {["USER", "ROLE", "DEPARTMENT", "EMAIL", "STATUS", "ACTIONS"].map((heading) => (
+                {[
+                  "USER",
+                  "ROLE",
+                  "DEPARTMENT",
+                  "EMAIL",
+                  "STATUS",
+                  "ACTIONS",
+                ].map((heading) => (
                   <th
                     key={heading}
                     className="px-4 py-4 text-xs font-bold uppercase tracking-wide text-slate-500"
@@ -147,28 +163,44 @@ export default function AdminUsersPage() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-16 text-center text-sm text-slate-400">
+                  <td
+                    colSpan={6}
+                    className="px-4 py-16 text-center text-sm text-slate-400"
+                  >
                     Loading users
                   </td>
                 </tr>
               ) : visibleUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-16 text-center text-sm text-slate-400">
+                  <td
+                    colSpan={6}
+                    className="px-4 py-16 text-center text-sm text-slate-400"
+                  >
                     No users found
                   </td>
                 </tr>
               ) : (
                 visibleUsers.map((user) => (
                   <tr key={user.id} className="text-sm text-slate-600">
-                    <td className="w-[20%] px-4 py-5 font-medium text-slate-800">{user.name}</td>
-                    <td className="w-[14%] px-4 py-5 font-medium text-slate-700">{ROLE_LABELS[user.role] ?? user.role}</td>
-                    <td className="w-[20%] px-4 py-5 font-medium text-slate-700">{user.department ?? "-"}</td>
-                    <td className="w-[24%] px-4 py-5 font-medium text-slate-500">{user.email}</td>
+                    <td className="w-[20%] px-4 py-5 font-medium text-slate-800">
+                      {user.name}
+                    </td>
+                    <td className="w-[14%] px-4 py-5 font-medium text-slate-700">
+                      {ROLE_LABELS[user.role] ?? user.role}
+                    </td>
+                    <td className="w-[20%] px-4 py-5 font-medium text-slate-700">
+                      {user.department ?? "-"}
+                    </td>
+                    <td className="w-[24%] px-4 py-5 font-medium text-slate-500">
+                      {user.email.slice(0, 5)}...{user.email.slice(-10)}
+                    </td>
                     <td className="w-[10%] px-4 py-5">
                       <span
                         className={cn(
                           "rounded-md px-3 py-1 text-xs font-bold",
-                          user.department ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600",
+                          user.department
+                            ? "bg-emerald-50 text-emerald-600"
+                            : "bg-rose-50 text-rose-600",
                         )}
                       >
                         {user.department ? "Active" : "Inactive"}
@@ -186,7 +218,9 @@ export default function AdminUsersPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => navigator.clipboard.writeText(user.email)}
+                          onClick={() =>
+                            navigator.clipboard.writeText(user.email)
+                          }
                           className="rounded-md p-2 text-slate-400 transition hover:bg-slate-50 hover:text-slate-700"
                           aria-label={`Copy ${user.email}`}
                         >
@@ -203,19 +237,36 @@ export default function AdminUsersPage() {
 
         <footer className="mt-7 flex items-center justify-between text-sm text-slate-500">
           <p>
-            Showing {filteredUsers.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1} to{" "}
-            {Math.min(page * PAGE_SIZE, filteredUsers.length)} of {filteredUsers.length}
+            Showing{" "}
+            {filteredUsers.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1} to{" "}
+            {Math.min(page * PAGE_SIZE, filteredUsers.length)} of{" "}
+            {filteredUsers.length}
           </p>
           <div className="flex items-center gap-2">
-            <PageButton disabled={page === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
+            <PageButton
+              disabled={page === 1}
+              onClick={() => setPage((value) => Math.max(1, value - 1))}
+            >
               <ChevronLeft className="size-4" />
             </PageButton>
-            {Array.from({ length: Math.min(totalPages, 5) }, (_, index) => index + 1).map((pageNumber) => (
-              <PageButton key={pageNumber} active={pageNumber === page} onClick={() => setPage(pageNumber)}>
+            {Array.from(
+              { length: Math.min(totalPages, 5) },
+              (_, index) => index + 1,
+            ).map((pageNumber) => (
+              <PageButton
+                key={pageNumber}
+                active={pageNumber === page}
+                onClick={() => setPage(pageNumber)}
+              >
                 {pageNumber}
               </PageButton>
             ))}
-            <PageButton disabled={page === totalPages} onClick={() => setPage((value) => Math.min(totalPages, value + 1))}>
+            <PageButton
+              disabled={page === totalPages}
+              onClick={() =>
+                setPage((value) => Math.min(totalPages, value + 1))
+              }
+            >
               <ChevronRight className="size-4" />
             </PageButton>
           </div>
@@ -261,48 +312,60 @@ function UserDialog({
   onSaved: () => Promise<void>;
   user?: AdminUser | null;
 }) {
+  const dialogKey = `${mode}-${user?.id ?? "new"}-${open ? "open" : "closed"}`;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <UserDialogForm
+          key={dialogKey}
+          mode={mode}
+          onOpenChange={onOpenChange}
+          onSaved={onSaved}
+          user={user}
+        />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function UserDialogForm({
+  mode,
+  onOpenChange,
+  onSaved,
+  user,
+}: {
+  mode: "create" | "edit";
+  onOpenChange: (open: boolean) => void;
+  onSaved: () => Promise<void>;
+  user?: AdminUser | null;
+}) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState<AdminUserUpsert>({
-    name: "",
-    email: "",
-    password: "",
-    role: "REVIEWER",
-    department: "",
-    designation: "",
-    state: "",
-    mobile: "",
-    office_unit: "",
-  });
-
-  useEffect(() => {
-    if (!open) return;
-    if (mode === "edit" && user) {
-      setForm({
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        department: user.department ?? "",
-        designation: user.designation ?? "",
-        state: user.state ?? "",
-        mobile: user.mobile ?? "",
-        office_unit: user.office_unit ?? "",
-      });
-    } else {
-      setForm({
-        name: "",
-        email: "",
-        password: "",
-        role: "REVIEWER",
-        department: "",
-        designation: "",
-        state: "",
-        mobile: "",
-        office_unit: "",
-      });
-    }
-    setError(null);
-  }, [mode, open, user]);
+  const [form, setForm] = useState<AdminUserUpsert>(() =>
+    mode === "edit" && user
+      ? {
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          department: user.department ?? "",
+          designation: user.designation ?? "",
+          state: user.state ?? "",
+          mobile: user.mobile ?? "",
+          office_unit: user.office_unit ?? "",
+        }
+      : {
+          name: "",
+          email: "",
+          password: "",
+          role: "REVIEWER",
+          department: "",
+          designation: "",
+          state: "",
+          mobile: "",
+          office_unit: "",
+        },
+  );
 
   async function handleSubmit() {
     setSubmitting(true);
@@ -334,103 +397,137 @@ function UserDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{mode === "create" ? "Add User" : "Edit User"}</DialogTitle>
-          <DialogDescription>
-            {mode === "create"
-              ? "Create a new system user and assign their role."
-              : "Update the user profile, role, and department details."}
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <DialogHeader>
+        <DialogTitle>
+          {mode === "create" ? "Add User" : "Edit User"}
+        </DialogTitle>
+        <DialogDescription>
+          {mode === "create"
+            ? "Create a new system user and assign their role."
+            : "Update the user profile, role, and department details."}
+        </DialogDescription>
+      </DialogHeader>
 
-        <div className="mt-6 grid grid-cols-2 gap-4">
-          <Field label="Name">
+      <div className="mt-6 grid grid-cols-2 gap-4">
+        <Field label="Name">
+          <input
+            value={form.name}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, name: event.target.value }))
+            }
+            className="h-11 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-indigo-200 focus:ring-2 focus:ring-indigo-100"
+          />
+        </Field>
+        <Field label="Email">
+          <input
+            value={form.email}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, email: event.target.value }))
+            }
+            className="h-11 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-indigo-200 focus:ring-2 focus:ring-indigo-100"
+          />
+        </Field>
+        {mode === "create" && (
+          <Field label="Password">
             <input
-              value={form.name}
-              onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-              className="h-11 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-indigo-200 focus:ring-2 focus:ring-indigo-100"
-            />
-          </Field>
-          <Field label="Email">
-            <input
-              value={form.email}
-              onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
-              className="h-11 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-indigo-200 focus:ring-2 focus:ring-indigo-100"
-            />
-          </Field>
-          {mode === "create" && (
-            <Field label="Password">
-              <input
-                type="password"
-                value={form.password}
-                onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
-                className="h-11 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-indigo-200 focus:ring-2 focus:ring-indigo-100"
-              />
-            </Field>
-          )}
-          <Field label="Role">
-            <select
-              value={form.role}
+              type="password"
+              value={form.password}
               onChange={(event) =>
-                setForm((current) => ({ ...current, role: event.target.value as AdminUserUpsert["role"] }))
+                setForm((current) => ({
+                  ...current,
+                  password: event.target.value,
+                }))
               }
               className="h-11 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-indigo-200 focus:ring-2 focus:ring-indigo-100"
-            >
-              <option value="ADMIN">Admin</option>
-              <option value="REVIEWER">Reviewer</option>
-              <option value="DEPT_USER">Dept. User</option>
-            </select>
-          </Field>
-          <Field label="Department">
-            <input
-              value={form.department ?? ""}
-              onChange={(event) => setForm((current) => ({ ...current, department: event.target.value }))}
-              className="h-11 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-indigo-200 focus:ring-2 focus:ring-indigo-100"
             />
           </Field>
-          <Field label="Designation">
-            <input
-              value={form.designation ?? ""}
-              onChange={(event) => setForm((current) => ({ ...current, designation: event.target.value }))}
-              className="h-11 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-indigo-200 focus:ring-2 focus:ring-indigo-100"
-            />
-          </Field>
-          <Field label="State">
-            <input
-              value={form.state ?? ""}
-              onChange={(event) => setForm((current) => ({ ...current, state: event.target.value }))}
-              className="h-11 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-indigo-200 focus:ring-2 focus:ring-indigo-100"
-            />
-          </Field>
-        </div>
-
-        {error && <p className="mt-4 text-sm text-rose-600">{error}</p>}
-
-        <DialogFooter>
-          <button
-            type="button"
-            onClick={() => onOpenChange(false)}
-            className="inline-flex h-10 items-center rounded-md border border-slate-200 px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+        )}
+        <Field label="Role">
+          <select
+            value={form.role}
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                role: event.target.value as AdminUserUpsert["role"],
+              }))
+            }
+            className="h-11 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-indigo-200 focus:ring-2 focus:ring-indigo-100"
           >
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={submitting}
-            onClick={handleSubmit}
-            className="inline-flex h-10 items-center rounded-md bg-indigo-600 px-4 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
-          >
-            {submitting ? "Saving..." : mode === "create" ? "Create User" : "Save Changes"}
-          </button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            <option value="ADMIN">Admin</option>
+            <option value="REVIEWER">Reviewer</option>
+            <option value="DEPT_USER">Dept. User</option>
+          </select>
+        </Field>
+        <Field label="Department">
+          <input
+            value={form.department ?? ""}
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                department: event.target.value,
+              }))
+            }
+            className="h-11 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-indigo-200 focus:ring-2 focus:ring-indigo-100"
+          />
+        </Field>
+        <Field label="Designation">
+          <input
+            value={form.designation ?? ""}
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                designation: event.target.value,
+              }))
+            }
+            className="h-11 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-indigo-200 focus:ring-2 focus:ring-indigo-100"
+          />
+        </Field>
+        <Field label="State">
+          <input
+            value={form.state ?? ""}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, state: event.target.value }))
+            }
+            className="h-11 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-indigo-200 focus:ring-2 focus:ring-indigo-100"
+          />
+        </Field>
+      </div>
+
+      {error && <p className="mt-4 text-sm text-rose-600">{error}</p>}
+
+      <DialogFooter>
+        <button
+          type="button"
+          onClick={() => onOpenChange(false)}
+          className="inline-flex h-10 items-center rounded-md border border-slate-200 px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          disabled={submitting}
+          onClick={handleSubmit}
+          className="inline-flex h-10 items-center rounded-md bg-indigo-600 px-4 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
+        >
+          {submitting
+            ? "Saving..."
+            : mode === "create"
+              ? "Create User"
+              : "Save Changes"}
+        </button>
+      </DialogFooter>
+    </>
   );
 }
 
-function Field({ children, label }: { children: React.ReactNode; label: string }) {
+function Field({
+  children,
+  label,
+}: {
+  children: React.ReactNode;
+  label: string;
+}) {
   return (
     <label className="flex flex-col gap-2">
       <span className="text-sm font-medium text-slate-700">{label}</span>
@@ -439,7 +536,13 @@ function Field({ children, label }: { children: React.ReactNode; label: string }
   );
 }
 
-function SelectShell({ children, value }: { children: React.ReactNode; value: string }) {
+function SelectShell({
+  children,
+  value,
+}: {
+  children: React.ReactNode;
+  value: string;
+}) {
   return (
     <div className="relative flex h-[52px] items-center justify-between rounded-md border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 shadow-sm">
       <span className="truncate">{value}</span>
@@ -468,7 +571,9 @@ function PageButton({
       className={cn(
         "flex h-10 min-w-10 items-center justify-center rounded-md border border-transparent px-3 text-sm font-semibold text-slate-500 transition",
         active && "border-indigo-100 text-indigo-600 shadow-sm",
-        disabled ? "cursor-not-allowed opacity-40" : "hover:border-slate-100 hover:bg-slate-50",
+        disabled
+          ? "cursor-not-allowed opacity-40"
+          : "hover:border-slate-100 hover:bg-slate-50",
       )}
     >
       {children}
