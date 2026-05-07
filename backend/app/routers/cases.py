@@ -39,6 +39,7 @@ class DirectiveOut(BaseModel):
     department: str
     deadline: datetime | None
     deadline_text: str | None = None              # Exact phrase e.g. "within 8 weeks"
+    deadline_source: str | None = None
     confidence_score: float
     is_ambiguous: bool
     ambiguity_reason: str | None
@@ -346,6 +347,7 @@ async def export_action_plan(
                 "department": d.department,
                 "deadline": d.deadline.isoformat() if d.deadline else None,
                 "deadline_text": d.deadline_text,
+                "deadline_source": d.deadline_source,
                 "limitation_days": d.limitation_days,
                 "confidence_score": d.confidence_score,
             }

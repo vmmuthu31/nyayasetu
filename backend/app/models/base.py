@@ -114,6 +114,7 @@ class Directive(Base):
     department = Column(String, nullable=False)
     deadline = Column(DateTime)
     deadline_text = Column(String)                  # Exact phrase e.g. "within 8 weeks"
+    deadline_source = Column(String, default="none")
     confidence_score = Column(Float, default=0.0)
     fingerprint = Column(String, nullable=False)
 
@@ -143,6 +144,7 @@ class ActionPlan(Base):
     assigned_officer_id = Column(String, ForeignKey("users.id"))
     status = Column(Enum(ActionPlanStatus), default=ActionPlanStatus.PENDING, nullable=False)
     due_date = Column(DateTime)
+    due_date_source = Column(String, default="none")
     remarks = Column(Text)
     affidavit_storage_key = Column(String)
     completion_notes = Column(Text)

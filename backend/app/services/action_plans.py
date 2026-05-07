@@ -50,6 +50,46 @@ async def create_action_plan_event(
     return event
 
 
+def _is_overdue(plan: ActionPlan, now: datetime | None = None) -> bool:
+    now = now or datetime.utcnow()
+    return (
+        plan.due_date is not None
+        and plan.due_date < now
+        and plan.status not in {
+            ActionPlanStatus.COMPLETED,
+            ActionPlanStatus.OVERDUE,
+        }
+    )
+
+
+async def refresh_overdue_action_plans(
+    db: AsyncSession,
+    *,
+    plans: list[ActionPlan] | None = None,
+    case_id: str | None = None,
+    department: str | None = None,
+) -> bool:
+    if plans is None:
+        query = select(ActionPlan)
+        if case_id:
+            query = query.where(ActionPlan.case_id == case_id)
+        if department:
+            query = query.where(ActionPlan.assigned_department == department)
+        result = await db.execute(query)
+        plans = result.scalars().all()
+
+    now = datetime.utcnow()
+    changed = False
+    for plan in plans:
+        if _is_overdue(plan, now):
+            plan.status = ActionPlanStatus.OVERDUE
+            plan.updated_at = now
+            changed = True
+    if changed:
+        await db.flush()
+    return changed
+
+
 async def ensure_action_plan_for_directive(
     db: AsyncSession,
     directive: Directive,
@@ -70,6 +110,7 @@ async def ensure_action_plan_for_directive(
         assigned_department=directive.department,
         assigned_officer_id=await pick_assigned_officer_id(db, directive.department),
         due_date=directive.deadline,
+        due_date_source=getattr(directive, "deadline_source", "none"),
         status=ActionPlanStatus.PENDING,
     )
     db.add(action_plan)
@@ -107,6 +148,7 @@ async def ensure_action_plans_for_case(db: AsyncSession, case_id: str) -> list[A
 async def sync_case_action_status(db: AsyncSession, case_id: str) -> None:
     result = await db.execute(select(ActionPlan).where(ActionPlan.case_id == case_id))
     plans = result.scalars().all()
+    await refresh_overdue_action_plans(db, plans=plans)
     if not plans:
         return
 

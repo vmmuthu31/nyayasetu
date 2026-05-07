@@ -5,6 +5,7 @@ reused by both the manual upload endpoint and the CCMS auto-fetch webhook.
 """
 from datetime import datetime
 from dataclasses import dataclass
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
@@ -39,6 +40,7 @@ async def _run_ingestion_pipeline(
     db: AsyncSession,
     user_id: str,
     source: str = "MANUAL_UPLOAD",
+    metadata_overrides: dict[str, Any] | None = None,
 ) -> IngestionResult:
     """
     Shared ingestion pipeline used by both manual upload and CCMS auto-fetch.
@@ -70,19 +72,69 @@ async def _run_ingestion_pipeline(
     if not llm_result.court:
         llm_result.court = "Court — pending review"
 
-    # Step 3: Rule-based chunking (used when LLM returns no directives)
+    metadata_overrides = metadata_overrides or {}
+
+    override_case_number = metadata_overrides.get("case_number")
+    override_court = metadata_overrides.get("court")
+    override_petitioners = metadata_overrides.get("petitioners")
+    override_respondents = metadata_overrides.get("respondents")
+    override_judgment_date = metadata_overrides.get("judgment_date")
+
+    if override_case_number:
+        llm_result.case_number = override_case_number
+    if override_court:
+        llm_result.court = override_court
+    if override_petitioners and not llm_result.petitioners:
+        llm_result.petitioners = override_petitioners
+    if override_respondents and not llm_result.respondents:
+        llm_result.respondents = override_respondents
+    if override_judgment_date and not llm_result.judgment_date:
+        llm_result.judgment_date = override_judgment_date
+
+    # Step 3: Rule-based chunking (supplementary even when LLM succeeds)
     rule_directives = extract_directives(extraction.full_text)
-    directives_data = llm_result.directives or [
-        {
-            "text": d.text,
-            "action_type": d.action_type,
-            "department": d.department,
-            "confidence": d.confidence,
-            "is_ambiguous": d.is_ambiguous,
-            "ambiguity_reason": d.ambiguity_reason,
-        }
-        for d in rule_directives
-    ]
+    directives_data: list[dict[str, Any]] = []
+    seen_fingerprints: set[str] = set()
+
+    for directive in llm_result.directives or []:
+        text = (directive.get("text") or "").strip()
+        if not text:
+            continue
+        fingerprint = directive.get("fingerprint") or __import__("hashlib").sha256(
+            text.encode()
+        ).hexdigest()
+        if fingerprint in seen_fingerprints:
+            continue
+        seen_fingerprints.add(fingerprint)
+        directives_data.append(
+            {
+                "text": text,
+                "action_type": directive.get("action_type"),
+                "department": directive.get("department"),
+                "deadline_text": directive.get("deadline_text"),
+                "deadline_days": directive.get("deadline_days"),
+                "confidence": directive.get("confidence"),
+                "is_ambiguous": directive.get("is_ambiguous"),
+                "ambiguity_reason": directive.get("ambiguity_reason"),
+                "fingerprint": fingerprint,
+            }
+        )
+
+    for d in rule_directives:
+        if d.fingerprint in seen_fingerprints:
+            continue
+        seen_fingerprints.add(d.fingerprint)
+        directives_data.append(
+            {
+                "text": d.text,
+                "action_type": d.action_type,
+                "department": d.department,
+                "confidence": d.confidence,
+                "is_ambiguous": d.is_ambiguous,
+                "ambiguity_reason": d.ambiguity_reason,
+                "fingerprint": d.fingerprint,
+            }
+        )
 
     # Step 4: Action plan generation
     judgment_date = None
@@ -140,6 +192,7 @@ async def _run_ingestion_pipeline(
             department=plan.department,
             deadline=plan.deadline,
             deadline_text=plan.deadline_text,
+            deadline_source=plan.deadline_source,
             confidence_score=plan.confidence_score,
             fingerprint=plan.fingerprint,
             is_ambiguous=plan.is_ambiguous,

@@ -100,7 +100,7 @@ export default function DepartmentsPage() {
             Department View
           </h1>
           <p className="mt-3 text-[15px] text-slate-500">
-            Track action plans and compliance status by department.
+            Overview, quick metrics, and recent action status for department operations.
           </p>
         </header>
 
@@ -152,9 +152,22 @@ export default function DepartmentsPage() {
         </section>
 
         <section className="mt-10">
-          <h2 className="text-[20px] font-semibold text-slate-950">
-            {user?.role === "DEPT_USER" ? "My Assigned Actions" : "Recent Action Plans"}
-          </h2>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-[20px] font-semibold text-slate-950">
+                {user?.role === "DEPT_USER" ? "My Assigned Actions" : "Recent Action Plans"}
+              </h2>
+              <p className="mt-2 text-sm text-slate-500">
+                This summary page shows recent activity. Open the full workspace for filtering, execution, and compliance updates.
+              </p>
+            </div>
+            <Link
+              href="/department/action-plans"
+              className="inline-flex h-10 items-center rounded-md border border-indigo-100 bg-indigo-50 px-4 text-sm font-semibold text-indigo-600 transition hover:bg-indigo-100"
+            >
+              View all action plans →
+            </Link>
+          </div>
 
           <div className="mt-6 overflow-hidden bg-white">
             <table className="w-full table-fixed text-left">
@@ -229,7 +242,7 @@ export default function DepartmentsPage() {
                       </td>
                       <td className="w-[14%] px-3 py-5">
                         <Link
-                          href={`/cases/${item.case_id}/review`}
+                          href={`/action-plan/${item.id}`}
                           className="inline-flex h-9 items-center justify-center rounded-md border border-slate-100 bg-white px-3 text-sm font-bold text-indigo-600 shadow-sm transition hover:border-indigo-100 hover:bg-indigo-50"
                         >
                           Open
@@ -243,7 +256,7 @@ export default function DepartmentsPage() {
           </div>
 
           <p className="mt-7 text-sm text-slate-500">
-            Use the action detail view to upload affidavits, add department remarks, and submit compliance for review.
+            Use the action-plan workspace to upload affidavits, add department remarks, escalate overdue items, and submit compliance for review.
           </p>
         </section>
       </div>

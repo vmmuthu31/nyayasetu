@@ -24,6 +24,7 @@ from app.services.action_plans import (
     create_action_plan_event,
     ensure_action_plan_for_directive,
     ensure_action_plans_for_case,
+    refresh_overdue_action_plans,
     sync_case_action_status,
 )
 from app.services.audit import append_audit_log
@@ -54,6 +55,7 @@ class ActionPlanOut(BaseModel):
     assigned_officer_name: str | None = None
     status: str
     due_date: str | None = None
+    due_date_source: str | None = None
     remarks: str | None = None
     affidavit_url: str | None = None
     completion_notes: str | None = None
@@ -203,6 +205,7 @@ async def _serialize_plans(
                 assigned_officer_name=officer_names.get(plan.assigned_officer_id) if plan.assigned_officer_id else None,
                 status=plan.status.value if hasattr(plan.status, "value") else str(plan.status),
                 due_date=plan.due_date.isoformat() if plan.due_date else None,
+                due_date_source=plan.due_date_source,
                 remarks=plan.remarks,
                 affidavit_url=affidavit_url,
                 completion_notes=plan.completion_notes,
@@ -242,9 +245,12 @@ async def my_department_action_plans(
 
     result = await db.execute(query.limit(limit))
     plans = result.scalars().all()
+    changed = await refresh_overdue_action_plans(db, plans=plans)
 
     if user_role == UserRole.DEPT_USER.value:
         plans = [plan for plan in plans if plan.assigned_department == current_user.department]
+    if changed:
+        await db.commit()
 
     return await _serialize_plans(db, plans)
 
@@ -256,10 +262,13 @@ async def case_action_plans(
     current_user: User = Depends(get_current_user),
 ):
     plans = await ensure_action_plans_for_case(db, case_id)
+    changed = await refresh_overdue_action_plans(db, plans=plans)
     scoped = []
     for plan in plans:
         _assert_plan_scope(plan, current_user)
         scoped.append(plan)
+    if changed:
+        await db.commit()
     return await _serialize_plans(db, scoped)
 
 
@@ -271,6 +280,9 @@ async def action_plan_detail(
 ):
     plan = await _load_plan_or_404(db, action_plan_id)
     _assert_plan_scope(plan, current_user)
+    changed = await refresh_overdue_action_plans(db, plans=[plan])
+    if changed:
+        await db.commit()
     return (await _serialize_plans(db, [plan]))[0]
 
 
@@ -286,7 +298,11 @@ async def review_queue(
         .order_by(ActionPlan.submitted_at.desc(), ActionPlan.updated_at.desc())
         .limit(limit)
     )
-    return await _serialize_plans(db, result.scalars().all())
+    plans = result.scalars().all()
+    changed = await refresh_overdue_action_plans(db, plans=plans)
+    if changed:
+        await db.commit()
+    return await _serialize_plans(db, plans)
 
 
 @router.patch("/{action_plan_id}/status", response_model=ActionPlanOut)
@@ -299,11 +315,13 @@ async def update_action_plan_status(
     _require_department_execution_access(current_user)
     plan = await _load_plan_or_404(db, action_plan_id)
     _assert_plan_scope(plan, current_user)
+    await refresh_overdue_action_plans(db, plans=[plan])
 
     allowed = {
         ActionPlanStatus.PENDING.value,
         ActionPlanStatus.IN_PROGRESS.value,
         ActionPlanStatus.ESCALATED.value,
+        ActionPlanStatus.OVERDUE.value,
     }
     if body.status not in allowed:
         raise HTTPException(status_code=400, detail="Unsupported execution status")

@@ -47,6 +47,13 @@ async def _fetch_and_ingest(payload: CcmsWebhookPayload) -> None:
                 db=db,
                 user_id="ccms-system",
                 source="CCMS_AUTO_FETCH",
+                metadata_overrides={
+                    "case_number": payload.case_number,
+                    "court": payload.court,
+                    "petitioners": payload.petitioners,
+                    "respondents": payload.respondents,
+                    "judgment_date": payload.disposed_at,
+                },
             )
             await db.commit()
         except Exception as exc:

@@ -25,7 +25,9 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE cases ADD COLUMN IF NOT EXISTS received_at TIMESTAMP",
             # directives
             "ALTER TABLE directives ADD COLUMN IF NOT EXISTS deadline_text VARCHAR",
+            "ALTER TABLE directives ADD COLUMN IF NOT EXISTS deadline_source VARCHAR DEFAULT 'none'",
             # action_plans
+            "ALTER TABLE action_plans ADD COLUMN IF NOT EXISTS due_date_source VARCHAR DEFAULT 'none'",
             "ALTER TABLE action_plans ADD COLUMN IF NOT EXISTS remarks TEXT",
             "ALTER TABLE action_plans ADD COLUMN IF NOT EXISTS affidavit_storage_key VARCHAR",
             "ALTER TABLE action_plans ADD COLUMN IF NOT EXISTS completion_notes TEXT",

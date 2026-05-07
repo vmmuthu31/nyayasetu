@@ -14,6 +14,7 @@ import { ActionPlan, api, CaseDetail, Directive, AuditEntry } from "@/lib/api";
 import { formatDate, cn, daysUntil } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { can } from "@/lib/rbac";
+import { PdfHighlightViewer } from "@/components/verification/PdfHighlightViewer";
 
 /* ─── Confidence helpers ─────────────────────────────────── */
 
@@ -244,6 +245,10 @@ export default function ReviewPage() {
   const selectedActionPlan =
     (selected ? actionPlans.find((item) => item.directive_id === selected.id) : null) ?? actionPlans[0] ?? null;
   const parentPath = canReview ? "/cases" : "/verified";
+  const selectedPage =
+    selected?.page_number ??
+    selected?.highlight_coords?.[0]?.page ??
+    1;
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-slate-50">
@@ -420,11 +425,14 @@ export default function ReviewPage() {
                   )}
                 </div>
                 {pdfUrl ? (
-                  <iframe
-                    src={pdfUrl}
-                    className="flex-1 w-full border-0"
-                    title="Case PDF"
-                  />
+                  <div className="flex-1 p-3 overflow-y-auto">
+                    <PdfHighlightViewer
+                      pdfUrl={pdfUrl}
+                      highlights={selected?.highlight_coords ?? []}
+                      activePage={selectedPage}
+                      className="h-full"
+                    />
+                  </div>
                 ) : (
                   <div className="flex-1 flex items-center justify-center text-slate-400 text-sm">
                     <div className="text-center">
@@ -655,6 +663,14 @@ export default function ReviewPage() {
                           />
                         ) : (d.deadline_text || formatDate(d.deadline) || "—")
                       } verified={d.status === "VERIFIED"} />
+                      {d.deadline && d.deadline_source === "default" && (
+                        <SubFieldRow
+                          label="Timeline Source"
+                          value="Estimated from fallback policy"
+                          verified={false}
+                          warn
+                        />
+                      )}
 
                       {/* Action type */}
                       <SubFieldRow label="Action Type" value={
@@ -807,6 +823,9 @@ export default function ReviewPage() {
 
                   <div className="space-y-1 text-[11px] text-slate-500">
                     <p>Due: <span className="font-medium text-slate-700">{formatDate(selectedActionPlan.due_date)}</span></p>
+                    {selectedActionPlan.due_date && selectedActionPlan.due_date_source === "default" && (
+                      <p className="text-amber-600">Due date was estimated from fallback rules and needs reviewer confirmation.</p>
+                    )}
                     {selectedActionPlan.reviewer_feedback && (
                       <p className="text-rose-600">Reviewer feedback: {selectedActionPlan.reviewer_feedback}</p>
                     )}

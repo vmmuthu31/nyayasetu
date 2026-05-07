@@ -276,6 +276,7 @@ export interface Directive {
   department: string;
   deadline: string | null;
   deadline_text?: string | null;          // Exact phrase e.g. "within 8 weeks"
+  deadline_source?: string | null;
   confidence_score: number;
   is_ambiguous: boolean;
   ambiguity_reason?: string;
@@ -447,6 +448,7 @@ export interface ActionPlan {
   assigned_officer_name?: string | null;
   status: ActionPlanStatus;
   due_date: string | null;
+  due_date_source?: string | null;
   remarks?: string | null;
   affidavit_url?: string | null;
   completion_notes?: string | null;

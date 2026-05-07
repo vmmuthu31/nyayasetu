@@ -117,7 +117,7 @@ def extract_directives(full_text: str, pages: list[dict] | None = None) -> list[
         if directive_sentences:
             directive_text = " ".join(directive_sentences)
             action_type, action_conf = _detect_action_type(directive_text)
-            department, dept_conf = _detect_department(full_text)
+            department, dept_conf = _detect_department(directive_text)
 
             confidence = round((action_conf + dept_conf) / 2, 2)
             fingerprint = hashlib.sha256(directive_text.encode()).hexdigest()
