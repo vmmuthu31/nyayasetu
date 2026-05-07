@@ -13,8 +13,13 @@ import {
   Moon,
   SunMedium,
 } from "lucide-react";
-import { ActionPlan, api, CaseDetail, CaseListItem, StatsResponse } from "@/lib/api";
-import { useAuth } from "@/lib/auth-context";
+import {
+  ActionPlan,
+  api,
+  CaseDetail,
+  CaseListItem,
+  StatsResponse,
+} from "@/lib/api";
 import { cn, formatDate } from "@/lib/utils";
 
 type DashboardSeed = {
@@ -23,17 +28,21 @@ type DashboardSeed = {
   actionPlans: ActionPlan[];
 };
 
-const TAB_OPTIONS = ["PDF Viewer", "Extracted Text", "Directive Blocks"] as const;
+const TAB_OPTIONS = [
+  "PDF Viewer",
+  "Extracted Text",
+  "Directive Blocks",
+] as const;
 
 export default function DashboardPage() {
-  const { user } = useAuth();
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [seed, setSeed] = useState<DashboardSeed>({
     caseItem: null,
     caseDetail: null,
     actionPlans: [],
   });
-  const [activeTab, setActiveTab] = useState<(typeof TAB_OPTIONS)[number]>("PDF Viewer");
+  const [activeTab, setActiveTab] =
+    useState<(typeof TAB_OPTIONS)[number]>("PDF Viewer");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -64,23 +73,34 @@ export default function DashboardPage() {
   }, []);
 
   const counts = stats?.status_counts ?? {};
-  const totalFields = Math.max(7, (seed.caseDetail?.directives.length ?? 0) + 5);
+  const totalFields = seed.caseDetail
+    ? Math.max(4, seed.caseDetail.directives.length + 4)
+    : 0;
   const verifiedFields = Math.min(
     totalFields,
-    4 + seed.actionPlans.filter((plan) => plan.status === "COMPLETED" || plan.status === "AWAITING_REVIEW").length,
+    4 +
+      seed.actionPlans.filter(
+        (plan) =>
+          plan.status === "COMPLETED" || plan.status === "AWAITING_REVIEW",
+      ).length,
   );
-  const confidence = Math.round((seed.caseDetail?.confidence_score ?? seed.caseItem?.confidence_score ?? 0.84) * 100);
+  const confidence = Math.round(
+    (seed.caseDetail?.confidence_score ??
+      seed.caseItem?.confidence_score ??
+      0) * 100,
+  );
   const primaryDirective = seed.caseDetail?.directives[0] ?? null;
   const directiveCards = seed.caseDetail?.directives.slice(0, 2) ?? [];
-  const departmentCount = new Set(seed.actionPlans.map((plan) => plan.assigned_department)).size || 2;
-  const deadlineCards = (stats?.upcoming_deadlines ?? []).slice(0, 2);
-  const timelineItems = buildTimeline(seed.actionPlans, user?.name);
+  const departmentCount = new Set(
+    seed.actionPlans.map((plan) => plan.assigned_department),
+  ).size;
+  const deadlineCards = (stats?.upcoming_deadlines ?? []).slice(0, 3);
+  const timelineItems = buildTimeline(seed.actionPlans).slice(0, 4);
+  const hasCase = Boolean(seed.caseItem && seed.caseDetail);
 
   return (
     <main className="h-full overflow-y-auto bg-[#f5f7fb]">
       <div className="mx-auto flex min-h-full w-full max-w-[1280px] flex-col px-8 py-8">
-        <TopBar userName={user?.name ?? "Officer"} designation={user?.designation ?? user?.role ?? "Reviewer"} />
-
         {error ? (
           <div className="mt-5 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             Could not load dashboard data: {error}
@@ -95,10 +115,10 @@ export default function DashboardPage() {
           verifiedFields={verifiedFields}
         />
 
-        <section className="mt-5 grid gap-5 xl:grid-cols-[1.15fr_1.05fr_0.55fr]">
+        <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.95fr)_340px]">
           <SurfaceCard className="overflow-hidden p-0">
             <div className="border-b border-slate-200 px-5 pt-4">
-              <div className="flex items-center gap-8 text-sm font-medium text-slate-500">
+              <div className="flex flex-wrap items-center gap-6 text-sm font-medium text-slate-500">
                 {TAB_OPTIONS.map((tab) => (
                   <button
                     key={tab}
@@ -114,7 +134,7 @@ export default function DashboardPage() {
                     {tab}
                     {tab === "Directive Blocks" ? (
                       <span className="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-600">
-                        {seed.caseDetail?.directives.length ?? 7}
+                        {seed.caseDetail?.directives.length ?? 0}
                       </span>
                     ) : null}
                   </button>
@@ -123,17 +143,33 @@ export default function DashboardPage() {
             </div>
 
             <div className="p-4">
-              {activeTab === "PDF Viewer" ? (
+              {!hasCase ? (
+                <EmptyPanel
+                  title="No case loaded yet"
+                  detail="Upload or verify a case to populate the review workspace on the dashboard."
+                />
+              ) : activeTab === "PDF Viewer" ? (
                 <PdfCanvas
-                  caseNumber={seed.caseItem?.case_number ?? "WP 23456/2025"}
-                  pages={seed.caseDetail?.page_count ?? 68}
-                  highlightOne={directiveCards[0]?.text ?? "The respondents shall reconsider the petitioner's claim and pass a speaking order within 8 weeks from the date of receipt of this order."}
-                  highlightTwo={directiveCards[1]?.text ?? "The 2nd respondent shall ensure compliance and submit a compliance affidavit before the Registrar on or before 15 Jul 2025."}
+                  caseNumber={seed.caseItem?.case_number ?? ""}
+                  court={seed.caseItem?.court ?? ""}
+                  petitioners={seed.caseItem?.petitioners ?? ""}
+                  respondents={seed.caseDetail?.respondents ?? ""}
+                  orderDate={formatCardDate(seed.caseItem?.judgment_date)}
+                  pages={seed.caseDetail?.page_count ?? 0}
+                  directives={directiveCards}
                 />
               ) : activeTab === "Extracted Text" ? (
-                <ExtractedTextPane directives={seed.caseDetail?.directives.map((directive) => directive.text) ?? []} />
+                <ExtractedTextPane
+                  directives={
+                    seed.caseDetail?.directives.map(
+                      (directive) => directive.text,
+                    ) ?? []
+                  }
+                />
               ) : (
-                <DirectiveBlockPane directives={seed.caseDetail?.directives ?? []} />
+                <DirectiveBlockPane
+                  directives={seed.caseDetail?.directives ?? []}
+                />
               )}
             </div>
           </SurfaceCard>
@@ -141,157 +177,220 @@ export default function DashboardPage() {
           <SurfaceCard className="p-4">
             <div className="mb-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <h2 className="text-[22px] font-semibold text-slate-900">Extracted Fields</h2>
+                <h2 className="text-[22px] font-semibold text-slate-900">
+                  Extracted Fields
+                </h2>
                 <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-semibold text-indigo-700">
                   Review Mode
                 </span>
               </div>
             </div>
 
-            <div className="space-y-3">
-              <FieldCard
-                label="Case Number"
-                value={seed.caseItem?.case_number ?? "WP 23456/2025"}
-                verified
-                score={98}
+            {!hasCase ? (
+              <EmptyPanel
+                title="No extracted fields available"
+                detail="Once a judgment is ingested, verified fields and directives will appear here."
               />
-              <FieldCard
-                label="Parties"
-                value={seed.caseItem?.petitioners ?? "ABC Infrastructure Pvt. Ltd. vs State of Karnataka & Ors."}
-                verified
-                score={92}
-              />
-              <FieldCard
-                label="Court"
-                value={seed.caseItem?.court ?? "High Court of Karnataka, Bengaluru"}
-                verified
-                score={96}
-              />
-
-              <div className="grid gap-3 md:grid-cols-2">
+            ) : (
+              <div className="space-y-3">
                 <FieldCard
-                  label="Order Date"
-                  value={formatCardDate(seed.caseItem?.judgment_date) || "24 Apr 2025"}
+                  label="Case Number"
+                  value={seed.caseItem?.case_number ?? "-"}
                   verified
+                  score={98}
                 />
                 <FieldCard
-                  label="Received Date"
-                  value={formatCardDate(seed.caseItem?.filed_at) || "25 Apr 2025"}
+                  label="Parties"
+                  value={seed.caseItem?.petitioners ?? "-"}
                   verified
+                  score={92}
                 />
-              </div>
+                <FieldCard
+                  label="Court"
+                  value={seed.caseItem?.court ?? "-"}
+                  verified
+                  score={96}
+                />
 
-              {(directiveCards.length > 0 ? directiveCards : [primaryDirective].filter(Boolean)).map((directive, index) =>
-                directive ? (
-                  <DirectiveReviewCard
-                    key={directive.id}
-                    directive={directive.text}
-                    department={directive.department}
-                    dueDate={formatCardDate(directive.deadline) || "15 Jul 2025"}
-                    actionType={directive.action_type}
-                    score={index === 0 ? 95 : 93}
+                <div className="grid gap-3 md:grid-cols-2">
+                  <FieldCard
+                    label="Order Date"
+                    value={formatCardDate(seed.caseItem?.judgment_date) || "-"}
+                    verified
                   />
-                ) : null,
-              )}
+                  <FieldCard
+                    label="Received Date"
+                    value={formatCardDate(seed.caseItem?.filed_at) || "-"}
+                    verified
+                  />
+                </div>
 
-              <div className="grid gap-3 md:grid-cols-2">
-                <FieldCard label="Action Type" value={primaryDirective?.action_type ?? "Comply"} verified />
-                <FieldCard label="Appeal Limitation" value="90 days from 24 Apr 2025" status="Review" />
+                {(directiveCards.length > 0
+                  ? directiveCards
+                  : [primaryDirective].filter(Boolean)
+                ).map((directive, index) =>
+                  directive ? (
+                    <DirectiveReviewCard
+                      key={directive.id}
+                      directive={directive.text}
+                      department={directive.department}
+                      dueDate={formatCardDate(directive.deadline) || "Not set"}
+                      actionType={directive.action_type}
+                      score={index === 0 ? 95 : 93}
+                    />
+                  ) : null,
+                )}
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <FieldCard
+                    label="Action Type"
+                    value={primaryDirective?.action_type ?? "-"}
+                    verified
+                  />
+                  <FieldCard
+                    label="Appeal Limitation"
+                    value={
+                      primaryDirective?.limitation_days
+                        ? `${primaryDirective.limitation_days} days remaining`
+                        : "Not available"
+                    }
+                    status={
+                      primaryDirective?.limitation_days ? "Review" : "Pending"
+                    }
+                  />
+                </div>
               </div>
-            </div>
+            )}
           </SurfaceCard>
 
           <div className="space-y-5">
             <SidebarPanel title="Action Plan Summary">
               <div className="grid grid-cols-2 gap-3">
-                <MiniStat label="Total Directions" value={seed.caseDetail?.directives.length ?? 2} />
+                <MiniStat
+                  label="Total Directions"
+                  value={seed.caseDetail?.directives.length ?? 0}
+                />
                 <MiniStat label="To Departments" value={departmentCount} />
-                <MiniStat label="Comply" value={seed.actionPlans.filter((plan) => plan.action_type === "COMPLY").length || 2} />
-                <MiniStat label="Appeal" value={seed.actionPlans.filter((plan) => plan.action_type === "APPEAL").length} />
-                <MiniStat label="Inform" value={seed.actionPlans.filter((plan) => plan.action_type === "INFORM").length} />
-                <MiniStat label="Monitor" value={seed.actionPlans.filter((plan) => plan.action_type === "MONITOR").length} />
+                <MiniStat
+                  label="Comply"
+                  value={
+                    seed.actionPlans.filter(
+                      (plan) => plan.action_type === "COMPLY",
+                    ).length
+                  }
+                />
+                <MiniStat
+                  label="Appeal"
+                  value={
+                    seed.actionPlans.filter(
+                      (plan) => plan.action_type === "APPEAL",
+                    ).length
+                  }
+                />
+                <MiniStat
+                  label="Inform"
+                  value={
+                    seed.actionPlans.filter(
+                      (plan) => plan.action_type === "INFORM",
+                    ).length
+                  }
+                />
+                <MiniStat
+                  label="Monitor"
+                  value={
+                    seed.actionPlans.filter(
+                      (plan) => plan.action_type === "MONITOR",
+                    ).length
+                  }
+                />
               </div>
             </SidebarPanel>
 
             <SidebarPanel title="Deadlines" actionLabel="View Calendar">
-              <div className="space-y-3">
-                {(deadlineCards.length > 0 ? deadlineCards : fallbackDeadlines()).map((item, index) => (
-                  <DeadlineCard
-                    key={`${item.case_id}-${index}`}
-                    department={item.department}
-                    title={item.action_type ?? (index === 0 ? "Speaking Order" : "Compliance Affidavit")}
-                    deadline={item.deadline}
-                  />
-                ))}
-              </div>
+              {deadlineCards.length === 0 ? (
+                <EmptyPanel
+                  title="No active deadlines"
+                  detail="Upcoming directive due dates will appear here."
+                  compact
+                />
+              ) : (
+                <div className="space-y-3">
+                  {deadlineCards.map((item, index) => (
+                    <DeadlineCard
+                      key={`${item.case_id}-${index}`}
+                      department={item.department}
+                      title={
+                        item.action_type ??
+                        (index === 0
+                          ? "Speaking Order"
+                          : "Compliance Affidavit")
+                      }
+                      deadline={item.deadline}
+                    />
+                  ))}
+                </div>
+              )}
             </SidebarPanel>
 
             <SidebarPanel title="Audit Trail" actionLabel="View All">
-              <div className="space-y-4">
-                {timelineItems.map((item, index) => (
-                  <AuditItem key={`${item.title}-${index}`} {...item} />
-                ))}
-              </div>
+              {timelineItems.length === 0 ? (
+                <EmptyPanel
+                  title="No activity yet"
+                  detail="Action plan events will build a live audit timeline here."
+                  compact
+                />
+              ) : (
+                <div className="space-y-4">
+                  {timelineItems.map((item, index) => (
+                    <AuditItem key={`${item.title}-${index}`} {...item} />
+                  ))}
+                </div>
+              )}
             </SidebarPanel>
 
             <SidebarPanel title="Export">
               <div className="space-y-3">
-                <ActionButton label="Export Verified Action Plan" icon={Download} primary={false} />
-                <ActionButton label="Export PDF" icon={Download} primary={false} />
+                <ActionButton
+                  label="Export Verified Action Plan"
+                  icon={Download}
+                  primary={false}
+                  disabled={!hasCase}
+                />
+                <ActionButton
+                  label="Export PDF"
+                  icon={Download}
+                  primary={false}
+                  disabled={!hasCase}
+                />
               </div>
             </SidebarPanel>
           </div>
         </section>
 
         <section className="mt-5 grid gap-4 md:grid-cols-4">
-          <MetricStrip label="Pending Review" value={counts.PENDING_REVIEW ?? 0} tone="amber" />
-          <MetricStrip label="Verified" value={counts.VERIFIED ?? 0} tone="emerald" />
-          <MetricStrip label="Actioned" value={counts.ACTIONED ?? 0} tone="blue" />
-          <MetricStrip label="Appealed" value={counts.APPEALED ?? 0} tone="violet" />
+          <MetricStrip
+            label="Pending Review"
+            value={counts.PENDING_REVIEW ?? 0}
+            tone="amber"
+          />
+          <MetricStrip
+            label="Verified"
+            value={counts.VERIFIED ?? 0}
+            tone="emerald"
+          />
+          <MetricStrip
+            label="Actioned"
+            value={counts.ACTIONED ?? 0}
+            tone="blue"
+          />
+          <MetricStrip
+            label="Appealed"
+            value={counts.APPEALED ?? 0}
+            tone="violet"
+          />
         </section>
       </div>
     </main>
-  );
-}
-
-function TopBar({ designation, userName }: { designation: string; userName: string }) {
-  return (
-    <div className="mb-5 flex items-center justify-between rounded-[26px] border border-slate-200 bg-white px-6 py-4 shadow-[0_18px_45px_-32px_rgba(15,23,42,0.45)]">
-      <div className="flex items-center gap-5">
-        <button className="rounded-xl border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-50">
-          <Menu className="h-5 w-5" />
-        </button>
-        <div className="flex items-center gap-2 text-sm text-slate-500">
-          <span>Cases</span>
-          <ChevronRight className="h-4 w-4" />
-          <span>WP 23456/2025</span>
-          <ChevronRight className="h-4 w-4" />
-          <span className="font-medium text-slate-700">Review &amp; Verify</span>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-slate-500">
-          <Bell className="h-4 w-4" />
-          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-[10px] font-semibold text-white">
-            3
-          </span>
-        </div>
-        <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-slate-500">
-          <SunMedium className="h-4 w-4" />
-          <Moon className="h-4 w-4" />
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#5a43d5] text-sm font-semibold text-white">
-            {initials(userName)}
-          </div>
-          <div className="leading-tight">
-            <p className="text-sm font-semibold text-slate-900">{userName}</p>
-            <p className="text-xs text-slate-500">{designation}</p>
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -313,29 +412,64 @@ function HeroPanel({
       <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-[38px] font-semibold tracking-tight text-slate-950">
-              {caseItem?.case_number ?? "WP 23456/2025"}
+            <h1 className="text-[30px] font-semibold tracking-tight text-slate-950 md:text-[38px]">
+              {caseItem?.case_number ?? "No active case"}
             </h1>
             <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-semibold text-indigo-700">
-              {caseItem?.court ?? "High Court of Karnataka"}
+              {caseItem?.court ?? "Awaiting case assignment"}
             </span>
           </div>
-          <p className="mt-3 text-[22px] text-slate-700">
-            {caseItem?.petitioners ?? "ABC Infrastructure Pvt. Ltd. vs State of Karnataka & Ors."}
+          <p className="mt-3 max-w-[720px] text-[18px] text-slate-700 md:text-[22px]">
+            {caseItem?.petitioners ??
+              "Choose a case from the verified queue to populate this dashboard."}
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-5 text-sm text-slate-500">
-            <MetaPill icon={CalendarDays} label={`Order Date: ${formatCardDate(caseItem?.judgment_date) || "24 Apr 2025"}`} />
-            <MetaPill icon={Clock3} label={`Received: ${formatCardDate(caseItem?.filed_at) || "25 Apr 2025"}`} />
-            <MetaPill icon={FileText} label={`Pages: ${caseDetail?.page_count ?? 68}`} />
+            <MetaPill
+              icon={CalendarDays}
+              label={`Order Date: ${formatCardDate(caseItem?.judgment_date) || "Not available"}`}
+            />
+            <MetaPill
+              icon={Clock3}
+              label={`Received: ${formatCardDate(caseItem?.filed_at) || "Not available"}`}
+            />
+            <MetaPill
+              icon={FileText}
+              label={`Pages: ${caseDetail?.page_count ?? 0}`}
+            />
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 xl:min-w-[470px] xl:flex-row xl:justify-end">
-          <CompactProgressCard title="Overall Confidence" value={`${confidence}%`} statusLabel="Good" progress={confidence} accent="emerald" />
-          <CompactProgressCard title="Review Progress" value={`${verifiedFields} / ${totalFields}`} statusLabel="Fields Verified" progress={Math.round((verifiedFields / totalFields) * 100)} accent="blue" />
+        <div className="flex flex-col gap-3 lg:grid lg:grid-cols-2 xl:min-w-[470px]">
+          <CompactProgressCard
+            title="Overall Confidence"
+            value={confidence > 0 ? `${confidence}%` : "—"}
+            statusLabel={confidence > 0 ? "Good" : "Pending"}
+            progress={confidence}
+            accent="emerald"
+          />
+          <CompactProgressCard
+            title="Review Progress"
+            value={totalFields > 0 ? `${verifiedFields} / ${totalFields}` : "—"}
+            statusLabel="Fields Verified"
+            progress={
+              totalFields > 0
+                ? Math.round((verifiedFields / totalFields) * 100)
+                : 0
+            }
+            accent="blue"
+          />
           <div className="flex items-start gap-3 xl:ml-2">
-            <ActionButton label="Save Draft" icon={FileText} />
-            <ActionButton label="Submit Verified" icon={CheckCircle2} primary />
+            <ActionButton
+              label="Save Draft"
+              icon={FileText}
+              disabled={!caseItem}
+            />
+            <ActionButton
+              label="Submit Verified"
+              icon={CheckCircle2}
+              primary
+              disabled={!caseItem}
+            />
           </div>
         </div>
       </div>
@@ -343,9 +477,20 @@ function HeroPanel({
   );
 }
 
-function SurfaceCard({ children, className }: { children: React.ReactNode; className?: string }) {
+function SurfaceCard({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <div className={cn("rounded-[26px] border border-slate-200 bg-white shadow-[0_20px_50px_-38px_rgba(15,23,42,0.4)]", className)}>
+    <div
+      className={cn(
+        "rounded-[26px] border border-slate-200 bg-white shadow-[0_20px_50px_-38px_rgba(15,23,42,0.4)]",
+        className,
+      )}
+    >
       {children}
     </div>
   );
@@ -364,7 +509,11 @@ function SidebarPanel({
     <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_18px_45px_-36px_rgba(15,23,42,0.35)]">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-[22px] font-semibold text-slate-900">{title}</h3>
-        {actionLabel ? <button className="text-sm font-semibold text-indigo-600">{actionLabel}</button> : null}
+        {actionLabel ? (
+          <button className="text-sm font-semibold text-indigo-600">
+            {actionLabel}
+          </button>
+        ) : null}
       </div>
       {children}
     </div>
@@ -385,22 +534,36 @@ function CompactProgressCard({
   value: string;
 }) {
   const accentBar = accent === "emerald" ? "bg-emerald-500" : "bg-blue-500";
-  const accentText = accent === "emerald" ? "text-emerald-600" : "text-slate-500";
+  const accentText =
+    accent === "emerald" ? "text-emerald-600" : "text-slate-500";
   return (
-    <div className="min-w-[170px] rounded-2xl border border-slate-200 bg-white px-4 py-3">
+    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
       <p className="text-xs font-medium text-slate-500">{title}</p>
       <div className="mt-2 flex items-end gap-2">
-        <span className="text-[34px] font-semibold text-slate-950">{value}</span>
-        <span className={cn("pb-2 text-xs font-semibold", accentText)}>{statusLabel}</span>
+        <span className="text-[34px] font-semibold text-slate-950">
+          {value}
+        </span>
+        <span className={cn("pb-2 text-xs font-semibold", accentText)}>
+          {statusLabel}
+        </span>
       </div>
       <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
-        <div className={cn("h-full rounded-full", accentBar)} style={{ width: `${Math.max(12, progress)}%` }} />
+        <div
+          className={cn("h-full rounded-full", accentBar)}
+          style={{ width: `${Math.max(12, progress)}%` }}
+        />
       </div>
     </div>
   );
 }
 
-function MetaPill({ icon: Icon, label }: { icon: typeof CalendarDays; label: string }) {
+function MetaPill({
+  icon: Icon,
+  label,
+}: {
+  icon: typeof CalendarDays;
+  label: string;
+}) {
   return (
     <div className="inline-flex items-center gap-2">
       <Icon className="h-4 w-4 text-slate-400" />
@@ -411,21 +574,27 @@ function MetaPill({ icon: Icon, label }: { icon: typeof CalendarDays; label: str
 
 function PdfCanvas({
   caseNumber,
-  highlightOne,
-  highlightTwo,
+  court,
+  directives,
+  orderDate,
   pages,
+  petitioners,
+  respondents,
 }: {
   caseNumber: string;
-  highlightOne: string;
-  highlightTwo: string;
+  court: string;
+  directives: NonNullable<CaseDetail["directives"]>;
+  orderDate: string;
   pages: number;
+  petitioners: string;
+  respondents: string;
 }) {
   return (
     <div>
       <div className="flex items-center justify-between rounded-t-[18px] bg-[#1f2430] px-5 py-3 text-white">
         <div className="flex items-center gap-4 text-sm">
           <span className="font-medium">{caseNumber}_Judgment.pdf</span>
-          <span className="text-slate-300">23 / {pages}</span>
+          <span className="text-slate-300">1 / {pages}</span>
           <span className="text-slate-300">100%</span>
         </div>
         <div className="flex items-center gap-3 text-slate-300">
@@ -436,37 +605,47 @@ function PdfCanvas({
         </div>
       </div>
       <div className="rounded-b-[18px] border border-t-0 border-slate-200 bg-[#f6f7fb] p-4">
-        <div className="relative flex min-h-[640px] gap-4 rounded-[18px] border border-slate-200 bg-white p-5 shadow-inner">
+        <div className="relative flex min-h-[420px] gap-4 rounded-[18px] border border-slate-200 bg-white p-5 shadow-inner md:min-h-[560px]">
           <div className="w-full pr-12">
-            <div className="mx-auto max-w-[560px] space-y-4 font-serif text-[15px] leading-8 text-slate-800">
-              <p className="text-center text-[22px] font-semibold">IN THE HIGH COURT OF KARNATAKA AT BENGALURU</p>
-              <p className="text-center">DATED THIS THE 24<sup>TH</sup> DAY OF APRIL, 2025</p>
+            <div className="mx-auto max-w-[560px] space-y-4 font-serif text-[14px] leading-7 text-slate-800 md:text-[15px] md:leading-8">
+              <p className="text-center text-[18px] font-semibold md:text-[22px]">
+                {court || "Court details unavailable"}
+              </p>
+              <p className="text-center">
+                {orderDate
+                  ? `DATED THIS THE ${orderDate.toUpperCase()}`
+                  : "DATED AS PER CASE RECORD"}
+              </p>
               <p className="text-center font-semibold">PRESENT</p>
-              <p className="text-center">THE HON&apos;BLE MR. JUSTICE R. DEVADATTA</p>
-              <p>WRIT PETITION No. {caseNumber.replace("WP ", "")} (GM-RES)</p>
-              <p>ABC Infrastructure Pvt. Ltd.,</p>
+              <p className="text-center">
+                {caseNumber || "Case record unavailable"}
+              </p>
+              <p>Case No. {caseNumber.replace("WP ", "") || "-"}</p>
+              <p>{petitioners || "Petitioners not available"}</p>
               <p className="text-right italic">...Petitioner</p>
               <p className="text-center">Versus</p>
-              <p>State of Karnataka &amp; Ors.</p>
+              <p>{respondents || "Respondents not available"}</p>
               <p className="text-right italic">...Respondents</p>
-              <p className="text-center font-semibold tracking-[0.3em]">ORDER</p>
-              <p>
-                1. This writ petition is filed challenging the order dated 10.03.2025 passed by the Executive Engineer,
-                Public Works Department, rejecting the petitioner&apos;s claim for additional payment.
+              <p className="text-center font-semibold tracking-[0.3em]">
+                ORDER
               </p>
-              <p>
-                2.{" "}
-                <span className="rounded bg-[#f8e56f] px-1 py-0.5">
-                  {highlightOne}
-                </span>
-              </p>
-              <p>
-                3.{" "}
-                <span className="rounded bg-[#b6ed8b] px-1 py-0.5">
-                  {highlightTwo}
-                </span>
-              </p>
-              <p>4. With the above directions, the writ petition stands disposed of.</p>
+              {directives.length === 0 ? (
+                <p>No verified directives available for preview.</p>
+              ) : (
+                directives.map((directive, index) => (
+                  <p key={directive.id}>
+                    {index + 1}.{" "}
+                    <span
+                      className={cn(
+                        "rounded px-1 py-0.5",
+                        index === 0 ? "bg-[#f8e56f]" : "bg-[#b6ed8b]",
+                      )}
+                    >
+                      {directive.text}
+                    </span>
+                  </p>
+                ))
+              )}
             </div>
           </div>
 
@@ -488,22 +667,26 @@ function PdfCanvas({
 
         <div className="mt-4 rounded-[18px] border border-slate-200 bg-white p-4">
           <div className="mb-3 flex items-center justify-between">
-            <h4 className="text-sm font-semibold text-slate-900">Directive Blocks ({7})</h4>
+            <h4 className="text-sm font-semibold text-slate-900">
+              Directive Blocks ({directives.length})
+            </h4>
             <span className="text-slate-400">✣</span>
           </div>
-          <div className="grid grid-cols-3 gap-3 xl:grid-cols-7">
-            {["Block 1", "Block 2", "Block 3", "Block 4", "Block 5", "Block 6", "Block 7"].map((block, index) => (
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7">
+            {directives.map((directive, index) => (
               <button
-                key={block}
+                key={directive.id}
                 className={cn(
                   "rounded-2xl border px-3 py-3 text-left transition",
-                  index === 2
+                  index === 0
                     ? "border-indigo-300 bg-indigo-50 text-indigo-700"
                     : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
                 )}
               >
-                <p className="text-sm font-semibold">{block}</p>
-                <p className="mt-1 text-xs">Pg {5 + index * 9}</p>
+                <p className="text-sm font-semibold">Block {index + 1}</p>
+                <p className="mt-1 text-xs">
+                  Pg {directive.page_number ?? index + 1}
+                </p>
               </button>
             ))}
           </div>
@@ -514,53 +697,61 @@ function PdfCanvas({
 }
 
 function ExtractedTextPane({ directives }: { directives: string[] }) {
-  const content = directives.length > 0 ? directives : [
-    "The respondents shall reconsider the petitioner's claim and pass a speaking order within 8 weeks from the date of receipt of this order.",
-    "The Executive Engineer, PWD shall ensure compliance and submit a compliance affidavit before the Registrar on or before 15 Jul 2025.",
-  ];
-
   return (
     <div className="rounded-[20px] border border-slate-200 bg-[#fafbff] p-5">
-      <h3 className="text-lg font-semibold text-slate-900">Extracted Judgment Text</h3>
-      <div className="mt-4 space-y-4 text-sm leading-7 text-slate-600">
-        {content.map((item, index) => (
-          <p key={`${item.slice(0, 18)}-${index}`}>
-            {index + 1}. {item}
-          </p>
-        ))}
-      </div>
+      <h3 className="text-lg font-semibold text-slate-900">
+        Extracted Judgment Text
+      </h3>
+      {directives.length === 0 ? (
+        <p className="mt-4 text-sm text-slate-500">
+          No extracted directives available for this case yet.
+        </p>
+      ) : (
+        <div className="mt-4 space-y-4 text-sm leading-7 text-slate-600">
+          {directives.map((item, index) => (
+            <p key={`${item.slice(0, 18)}-${index}`}>
+              {index + 1}. {item}
+            </p>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-function DirectiveBlockPane({ directives }: { directives: CaseDetail["directives"] }) {
-  const content = directives.length > 0 ? directives : [
-    {
-      id: "fallback-1",
-      text: "Reconsider the petitioner's claim and pass a speaking order within 8 weeks.",
-      department: "Public Works Department",
-      deadline: null,
-      action_type: "COMPLY",
-      confidence_score: 0.95,
-      is_ambiguous: false,
-      status: "VERIFIED",
-    } as CaseDetail["directives"][number],
-  ];
-
-  return (
+function DirectiveBlockPane({
+  directives,
+}: {
+  directives: CaseDetail["directives"];
+}) {
+  return directives.length === 0 ? (
+    <EmptyPanel
+      title="No directive blocks yet"
+      detail="Verified directive blocks will appear here after case review."
+    />
+  ) : (
     <div className="space-y-3">
-      {content.map((directive, index) => (
-        <div key={directive.id} className="rounded-[20px] border border-slate-200 bg-[#fafbff] p-4">
+      {directives.map((directive, index) => (
+        <div
+          key={directive.id}
+          className="rounded-[20px] border border-slate-200 bg-[#fafbff] p-4"
+        >
           <div className="mb-2 flex items-center justify-between">
             <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
               Direction {index + 1}
             </span>
-            <span className="text-sm font-semibold text-slate-500">{Math.round(directive.confidence_score * 100)}%</span>
+            <span className="text-sm font-semibold text-slate-500">
+              {Math.round(directive.confidence_score * 100)}%
+            </span>
           </div>
           <p className="text-sm leading-6 text-slate-700">{directive.text}</p>
           <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
-            <span className="rounded-full border border-slate-200 px-3 py-1">{directive.department}</span>
-            <span className="rounded-full border border-slate-200 px-3 py-1">{directive.action_type}</span>
+            <span className="rounded-full border border-slate-200 px-3 py-1">
+              {directive.department}
+            </span>
+            <span className="rounded-full border border-slate-200 px-3 py-1">
+              {directive.action_type}
+            </span>
           </div>
         </div>
       ))}
@@ -583,12 +774,20 @@ function FieldCard({
 }) {
   return (
     <div className="rounded-[18px] border border-slate-200 bg-white px-4 py-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
       <div className="mt-2 flex items-start justify-between gap-4">
-        <p className="max-w-[80%] text-sm leading-6 text-slate-800">{value}</p>
+        <p className="max-w-[80%] text-sm leading-6 text-slate-800">
+          {value || "-"}
+        </p>
         <div className="flex items-center gap-3">
           <StatusBadge status={status ?? (verified ? "Verified" : "Draft")} />
-          {typeof score === "number" ? <span className="text-xs font-semibold text-slate-500">{score}%</span> : null}
+          {typeof score === "number" ? (
+            <span className="text-xs font-semibold text-slate-500">
+              {score}%
+            </span>
+          ) : null}
           <button className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50">
             Edit
           </button>
@@ -644,7 +843,12 @@ function StatusBadge({ status }: { status: string }) {
         : "bg-slate-100 text-slate-500";
 
   return (
-    <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold", tone)}>
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold",
+        tone,
+      )}
+    >
       <span className="h-1.5 w-1.5 rounded-full bg-current" />
       {status}
     </span>
@@ -656,6 +860,28 @@ function MiniStat({ label, value }: { label: string; value: number }) {
     <div className="rounded-[18px] border border-slate-200 bg-white px-4 py-4 text-center">
       <p className="text-xs font-medium text-slate-500">{label}</p>
       <p className="mt-2 text-[30px] font-semibold text-slate-950">{value}</p>
+    </div>
+  );
+}
+
+function EmptyPanel({
+  compact,
+  detail,
+  title,
+}: {
+  compact?: boolean;
+  detail: string;
+  title: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-[18px] border border-dashed border-slate-200 bg-slate-50/80 text-slate-500",
+        compact ? "px-4 py-5" : "px-5 py-8",
+      )}
+    >
+      <p className="text-sm font-semibold text-slate-700">{title}</p>
+      <p className="mt-2 text-sm leading-6">{detail}</p>
     </div>
   );
 }
@@ -675,13 +901,21 @@ function DeadlineCard({
         <div>
           <div className="flex items-center gap-2">
             <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-            <p className="text-sm font-semibold text-slate-900">{department} - {title}</p>
+            <p className="text-sm font-semibold text-slate-900">
+              {department} - {title}
+            </p>
           </div>
-          <p className="mt-2 text-xs text-slate-500">Due: {formatDate(deadline)}</p>
+          <p className="mt-2 text-xs text-slate-500">
+            Due: {formatDate(deadline)}
+          </p>
         </div>
         <div className="text-right">
-          <p className="text-sm font-semibold text-slate-700">in {daysFromNow(deadline)} days</p>
-          <p className="mt-1 text-xs font-semibold text-emerald-600">On Track</p>
+          <p className="text-sm font-semibold text-slate-700">
+            in {daysFromNow(deadline)} days
+          </p>
+          <p className="mt-1 text-xs font-semibold text-emerald-600">
+            On Track
+          </p>
         </div>
       </div>
     </div>
@@ -712,21 +946,25 @@ function AuditItem({
 }
 
 function ActionButton({
+  disabled,
   icon: Icon,
   label,
   primary,
 }: {
+  disabled?: boolean;
   icon: typeof FileText;
   label: string;
   primary?: boolean;
 }) {
   return (
     <button
+      disabled={disabled}
       className={cn(
         "inline-flex h-12 items-center gap-2 rounded-xl px-5 text-sm font-semibold transition",
         primary
           ? "bg-[#5a43d5] text-white shadow-[0_14px_34px_-18px_rgba(90,67,213,0.85)] hover:brightness-105"
           : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+        disabled && "cursor-not-allowed opacity-45",
       )}
     >
       <Icon className="h-4 w-4" />
@@ -756,66 +994,40 @@ function MetricStrip({
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-medium text-slate-500">{label}</p>
-          <p className="mt-2 text-[32px] font-semibold text-slate-950">{value}</p>
+          <p className="mt-2 text-[32px] font-semibold text-slate-950">
+            {value}
+          </p>
         </div>
-        <span className={cn("rounded-full px-3 py-1 text-xs font-semibold", tones[tone])}>{label}</span>
+        <span
+          className={cn(
+            "rounded-full px-3 py-1 text-xs font-semibold",
+            tones[tone],
+          )}
+        >
+          {label}
+        </span>
       </div>
     </div>
   );
 }
 
-function buildTimeline(actionPlans: ActionPlan[], reviewerName?: string) {
-  if (actionPlans.length === 0) {
-    return [
-      {
-        title: "Verified Direction 1 - Timeline",
-        actor: `${reviewerName ?? "Reviewer"} (Reviewer)`,
-        detail: "8 weeks from receipt date",
-        when: "Today, 10:32 AM",
-      },
-      {
-        title: "Edited Due Date - Direction 2",
-        actor: `${reviewerName ?? "Reviewer"} (Reviewer)`,
-        detail: "15 Jul 2025",
-        when: "Today, 10:28 AM",
-      },
-      {
-        title: "Extracted 7 directive blocks from PDF",
-        actor: "System (AI Extractor)",
-        detail: "Court judgment parsed successfully",
-        when: "Today, 09:41 AM",
-      },
-    ];
-  }
-
-  return actionPlans.slice(0, 3).map((plan, index) => ({
-    title:
-      plan.status === "COMPLETED"
-        ? `Completed ${plan.action_type} workflow`
-        : plan.status === "AWAITING_REVIEW"
-          ? `Submitted ${plan.action_type} for review`
-          : `Updated ${plan.action_type} action plan`,
-    actor: `${reviewerName ?? "Officer"} (${plan.assigned_department})`,
-    detail: formatCardDate(plan.due_date) || "Timeline updated",
-    when: index === 0 ? "Today, 10:32 AM" : index === 1 ? "Today, 10:28 AM" : "Today, 09:41 AM",
-  }));
-}
-
-function fallbackDeadlines() {
-  return [
-    {
-      case_id: "fallback-1",
-      department: "PWD",
-      deadline: new Date(Date.now() + 52 * 86400000).toISOString(),
-      action_type: "Speaking Order",
-    },
-    {
-      case_id: "fallback-2",
-      department: "PWD",
-      deadline: new Date(Date.now() + 82 * 86400000).toISOString(),
-      action_type: "Compliance Affidavit",
-    },
-  ];
+function buildTimeline(actionPlans: ActionPlan[]) {
+  return actionPlans
+    .flatMap((plan) =>
+      plan.timeline.map((entry) => ({
+        title: entry.message,
+        actor: `${entry.actor_label}${plan.assigned_department ? ` (${plan.assigned_department})` : ""}`,
+        detail: plan.directive_text,
+        when: new Date(entry.created_at).toLocaleString("en-GB", {
+          day: "numeric",
+          month: "short",
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        createdAt: new Date(entry.created_at).getTime(),
+      })),
+    )
+    .sort((a, b) => b.createdAt - a.createdAt);
 }
 
 function formatCardDate(value?: string | null) {

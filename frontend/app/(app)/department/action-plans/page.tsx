@@ -57,8 +57,7 @@ export default function DepartmentActionPlansPage() {
         plan.assigned_department.toLowerCase().includes(needle);
       const matchesStatus =
         !status ||
-        plan.status === status ||
-        (status === "OVERDUE" && priorityForPlan(plan) === "High" && plan.status !== "COMPLETED");
+        plan.status === status;
       const planPriority = priorityForPlan(plan);
       const matchesPriority = priority === "All Priority" || planPriority === priority;
       const dueTime = plan.due_date ? new Date(plan.due_date).getTime() : Number.NaN;
@@ -169,7 +168,7 @@ export default function DepartmentActionPlansPage() {
                       <p className="line-clamp-2">{plan.directive_text}</p>
                     </td>
                     <td className="w-[15%] px-4 py-5 font-medium text-slate-500">
-                      {plan.assigned_officer_name ?? "Department Officer"}
+                      {plan.assigned_officer_name ?? "Unassigned"}
                     </td>
                     <td className="w-[12%] px-4 py-5 font-medium text-slate-500">{formatShortDate(plan.due_date)}</td>
                     <td className="w-[10%] px-4 py-5">
@@ -246,7 +245,7 @@ function downloadWorkspaceCsv(plans: ActionPlan[]) {
     ...plans.map((plan) => [
       plan.case_number,
       plan.directive_text,
-      plan.assigned_officer_name ?? "Department Officer",
+      plan.assigned_officer_name ?? "Unassigned",
       formatShortDate(plan.due_date),
       humanizeStatus(plan.status),
       priorityForPlan(plan),
