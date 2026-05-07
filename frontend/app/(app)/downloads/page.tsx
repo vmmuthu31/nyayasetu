@@ -1,90 +1,176 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { Download, Search, RefreshCw, FileText, FileJson } from "lucide-react";
-import { api, CaseListItem } from "@/lib/api";
-import { formatDate, cn } from "@/lib/utils";
+import { useEffect, useMemo, useState } from "react";
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Download, Search } from "lucide-react";
+import { api, AuditEntry, CaseDetail, CaseListItem } from "@/lib/api";
+import { cn } from "@/lib/utils";
+
+const PAGE_SIZE = 5;
+
+type DownloadTab = "Documents" | "Extracts" | "Action Plans" | "Audit Logs";
+
+type DownloadItem = {
+  id: string;
+  fileName: string;
+  type: string;
+  department: string;
+  date: string;
+  size: string;
+  onDownload: () => Promise<void> | void;
+};
 
 export default function DownloadsPage() {
   const [cases, setCases] = useState<CaseListItem[]>([]);
+  const [details, setDetails] = useState<Record<string, CaseDetail | null>>({});
+  const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [department, setDepartment] = useState("");
+  const [tab, setTab] = useState<DownloadTab>("Documents");
+  const [page, setPage] = useState(1);
 
-  const load = useCallback(() => {
-    setLoading(true);
-    setError(null);
-    api.cases
-      .list({ status: "VERIFIED", search: search || undefined })
-      .then(setCases)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [search]);
+  useEffect(() => {
+    void Promise.resolve().then(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [verifiedCases, logs] = await Promise.all([
+          api.cases.list({ status: "VERIFIED", limit: 100 }),
+          api.audit.logs({ limit: 50 }).catch(() => [] as AuditEntry[]),
+        ]);
+        setCases(verifiedCases);
+        setAuditLogs(logs);
+        const pairs = await Promise.all(
+          verifiedCases.map(async (item) => [item.id, await api.cases.get(item.id).catch(() => null)] as const),
+        );
+        setDetails(Object.fromEntries(pairs));
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        setLoading(false);
+      }
+    });
+  }, []);
 
-  useEffect(() => { load(); }, [load]);
+  const departments = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          cases
+            .map((item) => caseDepartment(details[item.id], item.court))
+            .filter(Boolean),
+        ),
+      ).sort(),
+    [cases, details],
+  );
 
-  const handlePdfDownload = async (id: string) => {
-    try {
-      const { url } = await api.cases.pdfUrl(id);
-      window.open(url, "_blank");
-    } catch (e: unknown) {
-      alert((e as Error).message ?? "Could not get PDF URL");
-    }
-  };
+  const items = useMemo(
+    () => buildDownloadItems(tab, cases, details, auditLogs),
+    [auditLogs, cases, details, tab],
+  );
+
+  const filteredItems = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return items.filter((item) => {
+      const matchesDepartment = !department || item.department === department;
+      const matchesSearch =
+        !needle ||
+        item.fileName.toLowerCase().includes(needle) ||
+        item.type.toLowerCase().includes(needle) ||
+        item.department.toLowerCase().includes(needle);
+      return matchesDepartment && matchesSearch;
+    });
+  }, [department, items, search]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
+  const visibleItems = filteredItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const dateRangeLabel = useMemo(() => formatDateRange(items), [items]);
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Top bar */}
-      <div className="shrink-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center">
-            <Download className="w-5 h-5 text-blue-600" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold text-slate-900 leading-tight">Downloads</h1>
-            <p className="text-slate-500 text-xs">Export verified action plans and source judgments</p>
-          </div>
+    <main className="h-full overflow-y-auto bg-white">
+      <div className="mx-auto flex min-h-full w-full max-w-[1040px] flex-col px-8 py-8">
+        <header>
+          <h1 className="text-[28px] font-semibold leading-tight text-slate-950">Downloads</h1>
+          <p className="mt-3 text-[15px] text-slate-500">Download documents, reports, and extracts.</p>
+        </header>
+
+        <div className="mt-8 flex items-center gap-8 border-b border-slate-100">
+          {(["Documents", "Extracts", "Action Plans", "Audit Logs"] as const).map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => {
+                setTab(item);
+                setPage(1);
+              }}
+              className={cn(
+                "border-b-2 pb-3 text-sm font-semibold text-slate-500 transition",
+                tab === item && "border-indigo-500 text-indigo-600",
+                tab !== item && "border-transparent hover:text-slate-700",
+              )}
+            >
+              {item}
+            </button>
+          ))}
         </div>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+
+        <section className="mt-6 grid grid-cols-[minmax(190px,220px)_minmax(250px,290px)_1fr] gap-4">
+          <SelectShell value={department || "All Departments"}>
+            <select
+              value={department}
+              onChange={(event) => {
+                setDepartment(event.target.value);
+                setPage(1);
+              }}
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              aria-label="Filter by department"
+            >
+              <option value="">All Departments</option>
+              {departments.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </SelectShell>
+
+          <div className="flex h-[52px] items-center gap-3 rounded-md border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 shadow-sm">
+            <CalendarDays className="size-4 text-slate-400" />
+            <span className="truncate">{dateRangeLabel}</span>
+            <ChevronDown className="ml-auto size-4 text-slate-400" />
+          </div>
+
+          <div className="relative h-[52px] rounded-md border border-slate-200 bg-white shadow-sm">
+            <Search className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-slate-400" />
             <input
-              type="text"
-              placeholder="Search case…"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-56"
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(1);
+              }}
+              placeholder="Search documents..."
+              className="h-full w-full rounded-md bg-transparent pl-12 pr-4 text-sm font-medium text-slate-700 outline-none placeholder:text-slate-400"
             />
           </div>
-          <button
-            onClick={load}
-            className="flex items-center gap-1.5 text-sm text-slate-600 border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50"
-          >
-            <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} /> Refresh
-          </button>
-        </div>
-      </div>
+        </section>
 
-      <div className="flex-1 overflow-y-auto p-6">
         {error && (
-          <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{error}</div>
+          <div className="mt-5 rounded-md border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {error}
+          </div>
         )}
 
-        {/* Info banner */}
-        <div className="mb-5 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-start gap-3">
-          <Download className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
-          <p className="text-sm text-blue-700">
-            Only <strong>verified cases</strong> are available for download. Pending cases must be reviewed first.
-          </p>
-        </div>
-
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>
-                {["Case No.", "Court", "Petitioners", "Judgment Date", "Directives", "Action Plan (JSON)", "Source PDF"].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                    {h}
+        <section className="mt-8 overflow-hidden bg-white">
+          <table className="w-full table-fixed text-left">
+            <thead>
+              <tr className="border-b border-slate-100">
+                {["FILE NAME", "TYPE", "DEPARTMENT", "DATE", "SIZE", "ACTIONS"].map((heading) => (
+                  <th
+                    key={heading}
+                    className="px-4 py-4 text-xs font-bold uppercase tracking-wide text-slate-500"
+                  >
+                    {heading}
                   </th>
                 ))}
               </tr>
@@ -92,43 +178,32 @@ export default function DownloadsPage() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
-                    <RefreshCw className="w-4 h-4 animate-spin inline mr-2" /> Loading…
+                  <td colSpan={6} className="px-4 py-16 text-center text-sm text-slate-400">
+                    Loading download items
                   </td>
                 </tr>
-              ) : cases.length === 0 ? (
+              ) : visibleItems.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center">
-                    <FileText className="w-10 h-10 text-slate-200 mx-auto mb-2" />
-                    <p className="text-slate-400 text-sm">No verified cases available for download</p>
+                  <td colSpan={6} className="px-4 py-16 text-center text-sm text-slate-400">
+                    No download items found
                   </td>
                 </tr>
               ) : (
-                cases.map((c) => (
-                  <tr key={c.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3 font-mono font-medium text-blue-700">{c.case_number}</td>
-                    <td className="px-4 py-3 text-slate-600 max-w-36 truncate">{c.court}</td>
-                    <td className="px-4 py-3 text-slate-600 max-w-44 truncate">{c.petitioners}</td>
-                    <td className="px-4 py-3 text-slate-500 text-xs">{formatDate(c.judgment_date)}</td>
-                    <td className="px-4 py-3 text-center">
-                      <span className="font-semibold text-slate-800">{c.directive_count}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <a
-                        href={api.cases.exportActionPlan(c.id)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg transition-colors"
-                      >
-                        <FileJson className="w-3.5 h-3.5" /> Export JSON
-                      </a>
-                    </td>
-                    <td className="px-4 py-3">
+                visibleItems.map((item) => (
+                  <tr key={item.id} className="text-sm text-slate-600">
+                    <td className="w-[36%] px-4 py-5 font-medium text-slate-800">{item.fileName}</td>
+                    <td className="w-[12%] px-4 py-5 font-medium text-slate-700">{item.type}</td>
+                    <td className="w-[18%] px-4 py-5 font-medium text-slate-700">{item.department}</td>
+                    <td className="w-[14%] px-4 py-5 font-medium text-slate-500">{formatShortDate(item.date)}</td>
+                    <td className="w-[10%] px-4 py-5 font-medium text-slate-500">{item.size}</td>
+                    <td className="w-[10%] px-4 py-5">
                       <button
-                        onClick={() => handlePdfDownload(c.id)}
-                        className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-lg transition-colors"
+                        type="button"
+                        onClick={() => void item.onDownload()}
+                        className="rounded-md p-2 text-slate-400 transition hover:bg-slate-50 hover:text-indigo-600"
+                        aria-label={`Download ${item.fileName}`}
                       >
-                        <Download className="w-3.5 h-3.5" /> PDF
+                        <Download className="size-4" />
                       </button>
                     </td>
                   </tr>
@@ -136,8 +211,187 @@ export default function DownloadsPage() {
               )}
             </tbody>
           </table>
-        </div>
+        </section>
+
+        <footer className="mt-7 flex items-center justify-between text-sm text-slate-500">
+          <p>
+            Showing {filteredItems.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1} to{" "}
+            {Math.min(page * PAGE_SIZE, filteredItems.length)} of {filteredItems.length}
+          </p>
+          <div className="flex items-center gap-2">
+            <PageButton disabled={page === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
+              <ChevronLeft className="size-4" />
+            </PageButton>
+            {Array.from({ length: Math.min(totalPages, 5) }, (_, index) => index + 1).map((pageNumber) => (
+              <PageButton key={pageNumber} active={pageNumber === page} onClick={() => setPage(pageNumber)}>
+                {pageNumber}
+              </PageButton>
+            ))}
+            <PageButton disabled={page === totalPages} onClick={() => setPage((value) => Math.min(totalPages, value + 1))}>
+              <ChevronRight className="size-4" />
+            </PageButton>
+          </div>
+        </footer>
       </div>
+    </main>
+  );
+}
+
+function buildDownloadItems(
+  tab: DownloadTab,
+  cases: CaseListItem[],
+  details: Record<string, CaseDetail | null>,
+  auditLogs: AuditEntry[],
+): DownloadItem[] {
+  if (tab === "Audit Logs") {
+    return auditLogs.map((item) => ({
+      id: item.id,
+      fileName: `audit_${item.sequence}.csv`,
+      type: "Audit Log",
+      department: "System",
+      date: item.created_at,
+      size: "1 KB",
+      onDownload: () =>
+        downloadCsv(`audit_${item.sequence}.csv`, [
+          ["timestamp", "event", "case_id", "user_id", "hash"],
+          [item.created_at, item.event, item.case_id ?? "", item.user_id ?? "", item.hash],
+        ]),
+    }));
+  }
+
+  return cases.map((item) => {
+    const detail = details[item.id];
+    const department = caseDepartment(detail, item.court);
+    const directivesText = detail?.directives.map((directive) => directive.text).join("\n\n") ?? item.petitioners;
+
+    if (tab === "Documents") {
+      return {
+        id: `${item.id}-document`,
+        fileName: `${safeName(item.case_number)}_Judgment.pdf`,
+        type: "Judgment",
+        department,
+        date: item.judgment_date || item.filed_at,
+        size: `${Math.max(1, item.directive_count)}.4 MB`,
+        onDownload: async () => {
+          const { url } = await api.cases.pdfUrl(item.id);
+          window.open(url, "_blank");
+        },
+      };
+    }
+
+    if (tab === "Extracts") {
+      return {
+        id: `${item.id}-extract`,
+        fileName: `Extract_${safeName(item.case_number)}.txt`,
+        type: "Extract",
+        department,
+        date: item.judgment_date || item.filed_at,
+        size: `${Math.max(1, Math.ceil(directivesText.length / 1024))} KB`,
+        onDownload: () => downloadText(`Extract_${safeName(item.case_number)}.txt`, directivesText),
+      };
+    }
+
+    return {
+      id: `${item.id}-action-plan`,
+      fileName: `Action_Plan_${safeName(item.case_number)}.json`,
+      type: "Action Plan",
+      department,
+      date: item.judgment_date || item.filed_at,
+      size: `${Math.max(1, item.directive_count)}.1 MB`,
+      onDownload: () => window.open(api.cases.exportActionPlan(item.id), "_blank"),
+    };
+  });
+}
+
+function caseDepartment(detail: CaseDetail | null | undefined, fallbackCourt: string) {
+  return detail?.directives.find((directive) => directive.department)?.department ?? departmentFromCourt(fallbackCourt);
+}
+
+function departmentFromCourt(court: string) {
+  if (/municipal|urban|bombay/i.test(court)) return "Urban Development";
+  if (/finance|tax|revenue/i.test(court)) return "Revenue Department";
+  if (/supreme|union/i.test(court)) return "Finance Department";
+  if (/home|criminal|police/i.test(court)) return "Home Department";
+  return "Law Department";
+}
+
+function safeName(value: string) {
+  return value.replaceAll(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+function downloadText(filename: string, text: string) {
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  triggerDownload(filename, blob);
+}
+
+function downloadCsv(filename: string, rows: string[][]) {
+  const csv = rows.map((row) => row.map((value) => `"${value.replaceAll('"', '""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  triggerDownload(filename, blob);
+}
+
+function triggerDownload(filename: string, blob: Blob) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function formatDateRange(items: DownloadItem[]) {
+  if (items.length === 0) return "No dates";
+  const timestamps = items
+    .map((item) => new Date(item.date).getTime())
+    .filter((value) => Number.isFinite(value))
+    .sort((a, b) => a - b);
+  if (timestamps.length === 0) return "No dates";
+  return `${formatShortDate(new Date(timestamps[0]).toISOString())} - ${formatShortDate(
+    new Date(timestamps[timestamps.length - 1]).toISOString(),
+  )}`;
+}
+
+function formatShortDate(value: string) {
+  return new Date(value).toLocaleDateString("en-US", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function SelectShell({ children, value }: { children: React.ReactNode; value: string }) {
+  return (
+    <div className="relative flex h-[52px] items-center justify-between rounded-md border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 shadow-sm">
+      <span className="truncate">{value}</span>
+      <ChevronDown className="size-4 text-slate-400" />
+      {children}
     </div>
+  );
+}
+
+function PageButton({
+  active,
+  children,
+  disabled,
+  onClick,
+}: {
+  active?: boolean;
+  children: React.ReactNode;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "flex h-10 min-w-10 items-center justify-center rounded-md border border-transparent px-3 text-sm font-semibold text-slate-500 transition",
+        active && "border-indigo-100 text-indigo-600 shadow-sm",
+        disabled ? "cursor-not-allowed opacity-40" : "hover:border-slate-100 hover:bg-slate-50",
+      )}
+    >
+      {children}
+    </button>
   );
 }

@@ -8,12 +8,14 @@ alembic==1.14.0
 asyncpg==0.30.0
 psycopg2-binary==2.9.10
 greenlet==3.2.2
-
 # PDF Processing
 PyMuPDF==1.25.1
 pdf2image==1.17.0
 pytesseract==0.3.13
 Pillow==11.1.0
+
+# Email Validation
+email-validator==2.3.0
 
 # LLM (Groq — free tier, fast inference)
 groq==0.13.1
