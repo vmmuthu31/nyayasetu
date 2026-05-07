@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,7 +8,7 @@ from jose import JWTError
 
 from app.core.database import get_db
 from app.core.security import decode_token
-from app.models.base import User
+from app.models.base import User, UserRole
 
 bearer = HTTPBearer()
 
@@ -26,3 +28,22 @@ async def get_current_user(
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     return user
+
+
+def require_roles(*roles: UserRole) -> Callable[..., User]:
+    async def dependency(current_user: User = Depends(get_current_user)) -> User:
+        user_role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+        allowed = {role.value if hasattr(role, "value") else str(role) for role in roles}
+        if user_role not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Unauthorized for this action",
+            )
+        return current_user
+
+    return dependency
+
+
+require_admin = require_roles(UserRole.ADMIN)
+require_reviewer_or_admin = require_roles(UserRole.ADMIN, UserRole.REVIEWER)
+require_department_or_admin = require_roles(UserRole.ADMIN, UserRole.DEPT_USER)

@@ -1,16 +1,21 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
+import { canAccessPath, roleHome } from "@/lib/rbac";
 
 export function Guard({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
-  }, [user, loading, router]);
+    if (!loading && user && !canAccessPath(user, pathname)) {
+      router.replace(roleHome(user));
+    }
+  }, [user, loading, pathname, router]);
 
   if (loading) {
     return (
@@ -21,5 +26,6 @@ export function Guard({ children }: { children: React.ReactNode }) {
   }
 
   if (!user) return null;
+  if (!canAccessPath(user, pathname)) return null;
   return <>{children}</>;
 }

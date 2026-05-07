@@ -26,21 +26,63 @@ import { useAuth } from "@/lib/auth-context";
 import { useSidebar } from "@/contexts/sidebar-context";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { can } from "@/lib/rbac";
 
 /* ─── Nav structure ──────────────────────────────────────── */
 
 const WORKSPACE_NAV = [
-  { href: "/upload", label: "New Ingestion", icon: TbFileImport },
-  { href: "/cases", label: "Pending Review", icon: TbClock, badge: "pending" },
-  { href: "/verified", label: "Verified Cases", icon: TbShieldCheck },
-  { href: "/calendar", label: "Action Calendar", icon: TbCalendarEvent },
-  { href: "/departments", label: "Department View", icon: TbBuilding },
+  {
+    href: "/upload",
+    label: "New Ingestion",
+    icon: TbFileImport,
+    visible: (role: string) => role === "ADMIN" || role === "REVIEWER",
+  },
+  {
+    href: "/cases",
+    label: "Pending Review",
+    icon: TbClock,
+    badge: "pending",
+    visible: (role: string) => role === "ADMIN" || role === "REVIEWER",
+  },
+  {
+    href: "/verified",
+    label: "Verified Cases",
+    icon: TbShieldCheck,
+    visible: () => true,
+  },
+  {
+    href: "/calendar",
+    label: "Action Calendar",
+    icon: TbCalendarEvent,
+    visible: () => true,
+  },
+  {
+    href: "/departments",
+    label: "Department View",
+    icon: TbBuilding,
+    visible: (role: string) => role === "ADMIN" || role === "DEPT_USER",
+  },
 ];
 
 const REPORTS_NAV = [
-  { href: "/audit", label: "Audit Trail", icon: TbClipboardList },
-  { href: "/downloads", label: "Downloads", icon: TbDownload },
-  { href: "/reports", label: "Reports", icon: TbChartBar },
+  {
+    href: "/audit",
+    label: "Audit Trail",
+    icon: TbClipboardList,
+    visible: (role: string) => role === "ADMIN" || role === "REVIEWER",
+  },
+  {
+    href: "/downloads",
+    label: "Downloads",
+    icon: TbDownload,
+    visible: () => true,
+  },
+  {
+    href: "/reports",
+    label: "Reports",
+    icon: TbChartBar,
+    visible: (role: string) => role === "ADMIN" || role === "REVIEWER",
+  },
 ];
 
 const ADMIN_NAV = [
@@ -58,11 +100,12 @@ export function Sidebar() {
   const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
+    if (!can(user, "view_assigned_cases")) return;
     api.cases
       .stats()
       .then((s) => setPendingCount(s.status_counts["PENDING_REVIEW"] ?? 0))
       .catch(() => {});
-  }, []);
+  }, [user]);
 
   const initials =
     user?.name
@@ -146,7 +189,9 @@ export function Sidebar() {
 
         {/* WORKSPACE */}
         <SectionLabel label="WORKSPACE" collapsed={collapsed} />
-        {WORKSPACE_NAV.map(({ href, label, icon: Icon, badge }) => (
+        {WORKSPACE_NAV.filter(
+          (item) => user?.role && item.visible(user.role),
+        ).map(({ href, label, icon: Icon, badge }) => (
           <NavItem
             key={href}
             href={href}
@@ -164,7 +209,9 @@ export function Sidebar() {
 
         {/* AUDIT & REPORTS */}
         <SectionLabel label="AUDIT & REPORTS" collapsed={collapsed} />
-        {REPORTS_NAV.map(({ href, label, icon: Icon }) => (
+        {REPORTS_NAV.filter(
+          (item) => user?.role && item.visible(user.role),
+        ).map(({ href, label, icon: Icon }) => (
           <NavItem
             key={href}
             href={href}
@@ -192,26 +239,6 @@ export function Sidebar() {
           </>
         )}
       </nav>
-
-      {/* ── System status ── */}
-      {!collapsed && (
-        <div className="mx-2 mb-2 rounded-xl bg-slate-800/60 border border-slate-700/50 px-3 py-2.5">
-          <div className="flex items-center gap-2 mb-1">
-            <TbLifebuoy className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span className="text-slate-200 text-xs font-medium">
-              System Healthy
-            </span>
-          </div>
-          <p className="text-[10px] text-slate-500 leading-snug">
-            Audit chain verified · {pendingCount} pending review
-          </p>
-        </div>
-      )}
-      {collapsed && (
-        <div className="flex justify-center pb-2" title="System Healthy">
-          <div className="w-2 h-2 rounded-full bg-emerald-400" />
-        </div>
-      )}
 
       {/* ── User footer ── */}
       <div className={cn("border-t border-slate-800 px-2 py-3 shrink-0")}>

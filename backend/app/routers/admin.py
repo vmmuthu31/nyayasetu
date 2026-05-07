@@ -10,22 +10,13 @@ from typing import Any
 from app.core.database import get_db
 from app.core.security import hash_password
 from app.models.base import User, UserRole
-from app.routers.deps import get_current_user
+from app.routers.deps import require_admin
 
 # Simple file-based settings store (upgrade to DB table as needed)
 SETTINGS_FILE = Path(__file__).parent.parent / "data" / "admin_settings.json"
 SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
-
-
-def require_admin(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role.value != "ADMIN":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
-        )
-    return current_user
 
 
 class UserOut(BaseModel):
