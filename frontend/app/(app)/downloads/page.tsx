@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Download, Search } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Download, Search } from "lucide-react";
 import { api, AuditEntry, CaseDetail, CaseListItem } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { can } from "@/lib/rbac";
 import { useDepartmentOptions } from "@/lib/use-department-options";
+import { DateRangeFilter } from "@/components/ui/DateRangeFilter";
 
 const PAGE_SIZE = 5;
 
@@ -31,6 +32,7 @@ export default function DownloadsPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [department, setDepartment] = useState("");
+  const [dateRange, setDateRange] = useState({ startDate: "", endDate: "" });
   const [tab, setTab] = useState<DownloadTab>("Documents");
   const [page, setPage] = useState(1);
 
@@ -84,14 +86,17 @@ export default function DownloadsPage() {
         item.fileName.toLowerCase().includes(needle) ||
         item.type.toLowerCase().includes(needle) ||
         item.department.toLowerCase().includes(needle);
-      return matchesDepartment && matchesSearch;
+      const itemDate = new Date(item.date).getTime();
+      const afterStart =
+        !dateRange.startDate || itemDate >= new Date(dateRange.startDate).getTime();
+      const beforeEnd =
+        !dateRange.endDate || itemDate <= new Date(`${dateRange.endDate}T23:59:59`).getTime();
+      return matchesDepartment && matchesSearch && afterStart && beforeEnd;
     });
-  }, [department, items, search]);
+  }, [dateRange.endDate, dateRange.startDate, department, items, search]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
   const visibleItems = filteredItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const dateRangeLabel = useMemo(() => formatDateRange(items), [items]);
-
   const availableTabs = (["Documents", "Extracts", "Action Plans", "Audit Logs"] as const).filter(
     (item) => item !== "Audit Logs" || can(user, "view_audit"),
   );
@@ -144,11 +149,7 @@ export default function DownloadsPage() {
             </select>
           </SelectShell>
 
-          <div className="flex h-[52px] items-center gap-3 rounded-md border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 shadow-sm">
-            <CalendarDays className="size-4 text-slate-400" />
-            <span className="truncate">{dateRangeLabel}</span>
-            <ChevronDown className="ml-auto size-4 text-slate-400" />
-          </div>
+          <DateRangeFilter label="Download date range" value={dateRange} onChange={setDateRange} />
 
           <div className="relative h-[52px] rounded-md border border-slate-200 bg-white shadow-sm">
             <Search className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-slate-400" />
@@ -346,18 +347,6 @@ function triggerDownload(filename: string, blob: Blob) {
   anchor.download = filename;
   anchor.click();
   URL.revokeObjectURL(url);
-}
-
-function formatDateRange(items: DownloadItem[]) {
-  if (items.length === 0) return "No dates";
-  const timestamps = items
-    .map((item) => new Date(item.date).getTime())
-    .filter((value) => Number.isFinite(value))
-    .sort((a, b) => a - b);
-  if (timestamps.length === 0) return "No dates";
-  return `${formatShortDate(new Date(timestamps[0]).toISOString())} - ${formatShortDate(
-    new Date(timestamps[timestamps.length - 1]).toISOString(),
-  )}`;
 }
 
 function formatShortDate(value: string) {

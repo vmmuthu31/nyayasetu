@@ -51,6 +51,7 @@ class ActionPlanOut(BaseModel):
     action_type: str
     assigned_department: str
     assigned_officer_id: str | None = None
+    assigned_officer_name: str | None = None
     status: str
     due_date: str | None = None
     remarks: str | None = None
@@ -168,6 +169,12 @@ async def _serialize_plans(
     case_result = await db.execute(select(Case).where(Case.id.in_(case_ids)))
     cases = {case.id: case for case in case_result.scalars().all()}
 
+    officer_ids = [plan.assigned_officer_id for plan in plans if plan.assigned_officer_id]
+    officer_names: dict[str, str] = {}
+    if officer_ids:
+        officer_result = await db.execute(select(User).where(User.id.in_(officer_ids)))
+        officer_names = {user.id: user.name for user in officer_result.scalars().all()}
+
     timelines = await _timeline_map(db, [plan.id for plan in plans])
 
     serialized: list[ActionPlanOut] = []
@@ -193,6 +200,7 @@ async def _serialize_plans(
                 action_type=directive.action_type.value if isinstance(directive.action_type, ActionType) else str(directive.action_type),
                 assigned_department=plan.assigned_department,
                 assigned_officer_id=plan.assigned_officer_id,
+                assigned_officer_name=officer_names.get(plan.assigned_officer_id) if plan.assigned_officer_id else None,
                 status=plan.status.value if hasattr(plan.status, "value") else str(plan.status),
                 due_date=plan.due_date.isoformat() if plan.due_date else None,
                 remarks=plan.remarks,
@@ -253,6 +261,17 @@ async def case_action_plans(
         _assert_plan_scope(plan, current_user)
         scoped.append(plan)
     return await _serialize_plans(db, scoped)
+
+
+@router.get("/{action_plan_id}", response_model=ActionPlanOut)
+async def action_plan_detail(
+    action_plan_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    plan = await _load_plan_or_404(db, action_plan_id)
+    _assert_plan_scope(plan, current_user)
+    return (await _serialize_plans(db, [plan]))[0]
 
 
 @router.get("/review-queue", response_model=list[ActionPlanOut])

@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { api, AdminUser, AuditEntry, CaseDetail } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { DateRangeFilter } from "@/components/ui/DateRangeFilter";
 
 const PAGE_SIZE = 5;
 
@@ -21,6 +22,7 @@ export default function AuditPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionFilter, setActionFilter] = useState("");
   const [userFilter, setUserFilter] = useState("");
+  const [dateRange, setDateRange] = useState({ startDate: "", endDate: "" });
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
 
@@ -68,13 +70,17 @@ export default function AuditPage() {
         item.userLabel.toLowerCase().includes(needle) ||
         item.entityLabel.toLowerCase().includes(needle) ||
         item.detailsLabel.toLowerCase().includes(needle);
-      return matchesAction && matchesUser && matchesSearch;
+      const createdAt = new Date(item.created_at).getTime();
+      const afterStart =
+        !dateRange.startDate || createdAt >= new Date(dateRange.startDate).getTime();
+      const beforeEnd =
+        !dateRange.endDate || createdAt <= new Date(`${dateRange.endDate}T23:59:59`).getTime();
+      return matchesAction && matchesUser && matchesSearch && afterStart && beforeEnd;
     });
-  }, [actionFilter, logs, search, userFilter]);
+  }, [actionFilter, dateRange.endDate, dateRange.startDate, logs, search, userFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredLogs.length / PAGE_SIZE));
   const visibleLogs = filteredLogs.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const dateRangeLabel = useMemo(() => formatAuditRange(logs), [logs]);
 
   return (
     <main className="h-full overflow-y-auto bg-white">
@@ -125,11 +131,7 @@ export default function AuditPage() {
             </select>
           </SelectShell>
 
-          <div className="flex h-[52px] items-center gap-3 rounded-md border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 shadow-sm">
-            <CalendarDays className="h-4 w-4 text-slate-400" />
-            <span className="truncate">{dateRangeLabel}</span>
-            <ChevronDown className="ml-auto h-4 w-4 text-slate-400" />
-          </div>
+          <DateRangeFilter label="Log date range" value={dateRange} onChange={setDateRange} />
 
           <div className="relative h-[52px] rounded-md border border-slate-200 bg-white shadow-sm">
             <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
@@ -324,25 +326,5 @@ function formatAuditTimestamp(value: string) {
     hour: "2-digit",
     minute: "2-digit",
     hour12: true,
-  });
-}
-
-function formatAuditRange(items: EnrichedAuditEntry[]) {
-  if (items.length === 0) return "No log dates";
-  const timestamps = items
-    .map((item) => new Date(item.created_at).getTime())
-    .filter((value) => Number.isFinite(value))
-    .sort((a, b) => a - b);
-  if (timestamps.length === 0) return "No log dates";
-  const start = formatRangeDate(timestamps[0]);
-  const end = formatRangeDate(timestamps[timestamps.length - 1]);
-  return `${start} - ${end}`;
-}
-
-function formatRangeDate(timestamp: number) {
-  return new Date(timestamp).toLocaleDateString("en-US", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
   });
 }

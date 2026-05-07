@@ -9,7 +9,7 @@ from typing import Any
 
 from app.core.database import get_db
 from app.core.security import hash_password
-from app.models.base import User, UserRole
+from app.models.base import Department, User, UserRole
 from app.routers.deps import require_admin
 
 # Simple file-based settings store (upgrade to DB table as needed)
@@ -56,6 +56,21 @@ class AdminUpdateUserRequest(BaseModel):
     office_unit: str | None = None
 
 
+class DepartmentOut(BaseModel):
+    id: str
+    name: str
+    code: str
+    email: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class DepartmentUpsertRequest(BaseModel):
+    name: str
+    code: str
+    email: EmailStr | None = None
+
+
 def serialize_user(user: User) -> UserOut:
     return UserOut(
         id=str(user.id),
@@ -67,6 +82,15 @@ def serialize_user(user: User) -> UserOut:
         state=getattr(user, "state", None),
         mobile=getattr(user, "mobile", None),
         office_unit=getattr(user, "office_unit", None),
+    )
+
+
+def serialize_department(department: Department) -> DepartmentOut:
+    return DepartmentOut(
+        id=str(department.id),
+        name=department.name,
+        code=department.code,
+        email=department.email,
     )
 
 
@@ -189,3 +213,73 @@ async def update_user(
     await db.commit()
     await db.refresh(user)
     return serialize_user(user)
+
+
+@router.get("/departments", response_model=list[DepartmentOut])
+async def list_departments(
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    result = await db.execute(select(Department).order_by(Department.name.asc()))
+    departments = result.scalars().all()
+    return [serialize_department(department) for department in departments]
+
+
+@router.post("/departments", response_model=DepartmentOut)
+async def create_department(
+    body: DepartmentUpsertRequest,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    existing_name = await db.execute(select(Department).where(Department.name == body.name.strip()))
+    if existing_name.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Department name already exists")
+
+    existing_code = await db.execute(select(Department).where(Department.code == body.code.strip().upper()))
+    if existing_code.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Department code already exists")
+
+    department = Department(
+        name=body.name.strip(),
+        code=body.code.strip().upper(),
+        email=body.email,
+    )
+    db.add(department)
+    await db.commit()
+    await db.refresh(department)
+    return serialize_department(department)
+
+
+@router.patch("/departments/{department_id}", response_model=DepartmentOut)
+async def update_department(
+    department_id: str,
+    body: DepartmentUpsertRequest,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    result = await db.execute(select(Department).where(Department.id == department_id))
+    department = result.scalar_one_or_none()
+    if not department:
+        raise HTTPException(status_code=404, detail="Department not found")
+
+    clean_name = body.name.strip()
+    clean_code = body.code.strip().upper()
+
+    existing_name = await db.execute(
+        select(Department).where(Department.name == clean_name, Department.id != department_id)
+    )
+    if existing_name.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Department name already exists")
+
+    existing_code = await db.execute(
+        select(Department).where(Department.code == clean_code, Department.id != department_id)
+    )
+    if existing_code.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Department code already exists")
+
+    department.name = clean_name
+    department.code = clean_code
+    department.email = body.email
+    await db.commit()
+    await db.refresh(department)
+    return serialize_department(department)

@@ -71,9 +71,24 @@ async def register_options(db: AsyncSession = Depends(get_db)):
         if (department := departments_by_name.get(name)) is not None
     ]
 
+    catalog_names = {item.name for item in ordered_departments}
+    extras = sorted(
+        (
+            DepartmentOption(
+                id=str(department.id),
+                name=department.name,
+                code=department.code,
+                email=department.email,
+            )
+            for department in departments
+            if department.name not in catalog_names
+        ),
+        key=lambda item: item.name.lower(),
+    )
+
     return RegisterOptionsResponse(
         roles=[RoleOption(**role) for role in ROLE_OPTIONS],
-        departments=ordered_departments,
+        departments=[*ordered_departments, *extras],
     )
 
 

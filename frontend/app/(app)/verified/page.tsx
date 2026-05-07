@@ -6,6 +6,7 @@ import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Loader2, Search }
 import { ActionPlan, api, CaseDetail, CaseListItem } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useDepartmentOptions } from "@/lib/use-department-options";
+import { DateRangeFilter } from "@/components/ui/DateRangeFilter";
 
 const PAGE_SIZE = 5;
 
@@ -20,6 +21,7 @@ export default function VerifiedCasesPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [department, setDepartment] = useState("");
+  const [dateRange, setDateRange] = useState({ startDate: "", endDate: "" });
   const [page, setPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,14 +63,17 @@ export default function VerifiedCasesPage() {
         item.petitioners.toLowerCase().includes(needle) ||
         item.court.toLowerCase().includes(needle);
       const matchesDepartment = !department || item.department === department;
-      return matchesSearch && matchesDepartment;
+      const verifiedOn = new Date(item.verifiedOn).getTime();
+      const afterStart =
+        !dateRange.startDate || verifiedOn >= new Date(dateRange.startDate).getTime();
+      const beforeEnd =
+        !dateRange.endDate || verifiedOn <= new Date(`${dateRange.endDate}T23:59:59`).getTime();
+      return matchesSearch && matchesDepartment && afterStart && beforeEnd;
     });
-  }, [cases, department, search]);
+  }, [cases, dateRange.endDate, dateRange.startDate, department, search]);
 
   const totalPages = Math.max(1, Math.ceil(filteredCases.length / PAGE_SIZE));
   const visibleCases = filteredCases.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const rangeLabel = useMemo(() => formatDateRange(cases), [cases]);
-
   return (
     <main className="h-full overflow-y-auto bg-white">
       <div className="mx-auto flex min-h-full w-full max-w-[1040px] flex-col px-8 py-8">
@@ -99,11 +104,7 @@ export default function VerifiedCasesPage() {
             </select>
           </SelectShell>
 
-          <div className="flex h-[52px] items-center gap-3 rounded-md border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 shadow-sm">
-            <CalendarDays className="h-4 w-4 text-slate-400" />
-            <span className="truncate">{rangeLabel}</span>
-            <ChevronDown className="ml-auto h-4 w-4 text-slate-400" />
-          </div>
+          <DateRangeFilter label="Verified date range" value={dateRange} onChange={setDateRange} />
 
           <div className="relative h-[52px] rounded-md border border-slate-200 bg-white shadow-sm">
             <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
@@ -287,18 +288,6 @@ function departmentFromCourt(court: string) {
 function caseTitle(item: CaseListItem) {
   if (item.petitioners && item.petitioners !== "Unknown") return item.petitioners;
   return item.case_number;
-}
-
-function formatDateRange(items: VerifiedCase[]) {
-  if (items.length === 0) return "No verified dates";
-  const timestamps = items
-    .map((item) => new Date(item.verifiedOn).getTime())
-    .filter((value) => Number.isFinite(value))
-    .sort((a, b) => a - b);
-  if (timestamps.length === 0) return "No verified dates";
-  const start = formatShortDate(new Date(timestamps[0]).toISOString());
-  const end = formatShortDate(new Date(timestamps[timestamps.length - 1]).toISOString());
-  return `${start} - ${end}`;
 }
 
 function formatShortDate(value: string) {

@@ -111,6 +111,7 @@ export const api = {
       const q = new URLSearchParams(params as Record<string, string>).toString();
       return request<ActionPlan[]>(`/action-plans/my-department${q ? `?${q}` : ""}`);
     },
+    get: (id: string) => request<ActionPlan>(`/action-plans/${id}`),
     byCase: (caseId: string) => request<ActionPlan[]>(`/action-plans/case/${caseId}`),
     reviewQueue: (limit?: number) =>
       request<ActionPlan[]>(`/action-plans/review-queue${limit ? `?limit=${limit}` : ""}`),
@@ -164,8 +165,47 @@ export const api = {
       }),
     getSettings: () => request<Record<string, unknown>>("/admin/settings"),
     systemInfo: () => request<SystemInfo>("/admin/system-info"),
+    departments: () => request<DepartmentOption[]>("/admin/departments"),
+    createDepartment: (payload: DepartmentUpsert) =>
+      request<DepartmentOption>("/admin/departments", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    updateDepartment: (id: string, payload: DepartmentUpsert) =>
+      request<DepartmentOption>(`/admin/departments/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      }),
+  },
+
+  reports: {
+    export: async (payload: ReportExportRequest) => {
+      const token = getToken();
+      const res = await fetch(`${BASE}/reports/export`, {
+        method: "POST",
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail ?? `Request failed (${res.status})`);
+      }
+      return {
+        blob: await res.blob(),
+        filename: getFilenameFromHeaders(res.headers) ?? "report-download",
+      };
+    },
   },
 };
+
+function getFilenameFromHeaders(headers: Headers) {
+  const disposition = headers.get("content-disposition");
+  const match = disposition?.match(/filename=\"?([^\";]+)\"?/i);
+  return match?.[1] ?? null;
+}
 
 // Types
 export interface User {
@@ -321,6 +361,12 @@ export interface AdminUserUpsert {
   office_unit?: string;
 }
 
+export interface DepartmentUpsert {
+  name: string;
+  code: string;
+  email?: string;
+}
+
 export interface IngestResponse {
   case_id: string;
   case_number: string;
@@ -398,6 +444,7 @@ export interface ActionPlan {
   action_type: string;
   assigned_department: string;
   assigned_officer_id?: string | null;
+  assigned_officer_name?: string | null;
   status: ActionPlanStatus;
   due_date: string | null;
   remarks?: string | null;
@@ -409,4 +456,12 @@ export interface ActionPlan {
   created_at: string;
   updated_at: string;
   timeline: ActionPlanTimelineEntry[];
+}
+
+export interface ReportExportRequest {
+  report_type: string;
+  format: "pdf" | "excel" | "csv";
+  start_date?: string;
+  end_date?: string;
+  department?: string;
 }

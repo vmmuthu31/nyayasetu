@@ -1,0 +1,18 @@
+{
+  "toggles": {
+    "auto_verify_high_confidence": false,
+    "require_notes_on_reject": true,
+    "email_on_ingest": true,
+    "email_on_deadline": true,
+    "email_on_verify": false,
+    "audit_chain": true,
+    "mfa_for_admin": false
+  },
+  "textVals": {
+    "app_name": "NyayaSetu",
+    "default_state": "",
+    "judgment_language": "English",
+    "default_deadline_days": "30",
+    "session_timeout": "8"
+  }
+}
