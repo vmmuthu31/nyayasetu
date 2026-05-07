@@ -20,6 +20,7 @@ When a High Court delivers a judgment with directives to government departments,
 
 Result: missed compliance deadlines, contempt-of-court risks, wasted lakhs of officer hours.
 
+
 ## 💡 What NyayaSetu Does
 
 A judgment PDF goes in. A **structured, verified, action-ready compliance plan** comes out — with every claim back-traceable to the exact paragraph in the source PDF and every action logged on a tamper-evident audit chain.
@@ -39,6 +40,14 @@ A judgment PDF goes in. A **structured, verified, action-ready compliance plan**
        ↓
    ✅ Verified Action Plan (JSON export · PDF traceability · audit-logged)
 ```
+<img width="1536" height="1024" alt="Flow1" src="https://github.com/user-attachments/assets/6590a4c6-8963-497e-88a1-92ba66f5653e" />
+
+<img width="1672" height="941" alt="flow2M" src="https://github.com/user-attachments/assets/3baedbef-545c-4cf8-810b-40cde1d4dd10" />
+
+<img width="1536" height="1024" alt="flow3" src="https://github.com/user-attachments/assets/50c9ab99-0438-4b9c-ab82-a3d877e416f5" />
+
+<img width="1536" height="1024" alt="flow4" src="https://github.com/user-attachments/assets/cfcd1b57-d4f1-4cb3-ace4-9804df4c0608" />
+
 
 ---
 
@@ -61,6 +70,9 @@ A judgment PDF goes in. A **structured, verified, action-ready compliance plan**
 ---
 
 ## 🏗 Architecture
+
+<img width="1536" height="1024" alt="Arch" src="https://github.com/user-attachments/assets/c4202d10-2668-4b4f-bf05-2a55f90b9a33" />
+
 
 ```
 nyayasetu/
