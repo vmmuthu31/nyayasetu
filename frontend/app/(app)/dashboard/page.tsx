@@ -1,502 +1,337 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Bell,
   CalendarDays,
   CheckCircle2,
-  ChevronRight,
   Clock3,
-  Download,
+  FileSearch,
   FileText,
-  Menu,
   Moon,
+  Search,
   SunMedium,
 } from "lucide-react";
 import {
-  ActionPlan,
+  Area,
+  AreaChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Cell,
+  Tooltip,
+} from "recharts";
+import {
   api,
-  CaseDetail,
-  CaseListItem,
-  StatsResponse,
+  DashboardActivity,
+  DashboardDeadline,
+  DashboardOverview,
+  DashboardRecentCase,
+  DashboardStatusItem,
+  DashboardTopDepartment,
 } from "@/lib/api";
-import { cn, formatDate } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
+import { cn } from "@/lib/utils";
 
-type DashboardSeed = {
-  caseItem: CaseListItem | null;
-  caseDetail: CaseDetail | null;
-  actionPlans: ActionPlan[];
-};
-
-const TAB_OPTIONS = [
-  "PDF Viewer",
-  "Extracted Text",
-  "Directive Blocks",
+const PERIOD_OPTIONS = [
+  { label: "This Month", value: 30 },
+  { label: "Last 2 Weeks", value: 14 },
+  { label: "Last 6 Weeks", value: 42 },
 ] as const;
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState<StatsResponse | null>(null);
-  const [seed, setSeed] = useState<DashboardSeed>({
-    caseItem: null,
-    caseDetail: null,
-    actionPlans: [],
-  });
-  const [activeTab, setActiveTab] =
-    useState<(typeof TAB_OPTIONS)[number]>("PDF Viewer");
+  const { user } = useAuth();
+  const [overview, setOverview] = useState<DashboardOverview | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [department, setDepartment] = useState("");
+  const [periodDays, setPeriodDays] = useState<number>(30);
 
   useEffect(() => {
     void Promise.resolve().then(async () => {
+      setLoading(true);
+      setError(null);
       try {
-        const [caseStats, cases] = await Promise.all([
-          api.cases.stats(),
-          api.cases.list({ limit: 8 }),
-        ]);
-        setStats(caseStats);
-
-        const primary = cases[0] ?? null;
-        if (primary) {
-          const [detail, plans] = await Promise.all([
-            api.cases.get(primary.id).catch(() => null),
-            api.actionPlans.byCase(primary.id).catch(() => [] as ActionPlan[]),
-          ]);
-          setSeed({
-            caseItem: primary,
-            caseDetail: detail,
-            actionPlans: plans,
-          });
-        }
+        const data = await api.dashboard.overview({
+          department: department || undefined,
+          period_days: periodDays,
+        });
+        setOverview(data);
       } catch (e) {
         setError((e as Error).message);
+      } finally {
+        setLoading(false);
       }
     });
-  }, []);
+  }, [department, periodDays]);
 
-  const counts = stats?.status_counts ?? {};
-  const totalFields = seed.caseDetail
-    ? Math.max(4, seed.caseDetail.directives.length + 4)
-    : 0;
-  const verifiedFields = Math.min(
-    totalFields,
-    4 +
-      seed.actionPlans.filter(
-        (plan) =>
-          plan.status === "COMPLETED" || plan.status === "AWAITING_REVIEW",
-      ).length,
-  );
-  const confidence = Math.round(
-    (seed.caseDetail?.confidence_score ??
-      seed.caseItem?.confidence_score ??
-      0) * 100,
-  );
-  const primaryDirective = seed.caseDetail?.directives[0] ?? null;
-  const directiveCards = seed.caseDetail?.directives.slice(0, 2) ?? [];
-  const departmentCount = new Set(
-    seed.actionPlans.map((plan) => plan.assigned_department),
-  ).size;
-  const deadlineCards = (stats?.upcoming_deadlines ?? []).slice(0, 3);
-  const timelineItems = buildTimeline(seed.actionPlans).slice(0, 4);
-  const hasCase = Boolean(seed.caseItem && seed.caseDetail);
+  const filteredCases = useMemo(() => {
+    const cases = overview?.recent_cases ?? [];
+    const needle = search.trim().toLowerCase();
+    if (!needle) return cases;
+    return cases.filter((item) =>
+      [item.case_number, item.petitioner, item.department, item.status]
+        .join(" ")
+        .toLowerCase()
+        .includes(needle),
+    );
+  }, [overview?.recent_cases, search]);
+
+  const metrics = overview?.metrics;
+  const totalCases = metrics?.total_cases ?? 0;
 
   return (
     <main className="h-full overflow-y-auto bg-[#f5f7fb]">
-      <div className="mx-auto flex min-h-full w-full max-w-[1280px] flex-col px-8 py-8">
+      <div className="mx-auto flex min-h-full w-full max-w-[1440px] flex-col px-4 py-4 sm:px-6 lg:px-8 lg:py-6">
+        <header className="rounded-[28px] border border-slate-200 bg-white px-4 py-4 shadow-[0_18px_45px_-34px_rgba(15,23,42,0.35)] sm:px-5 lg:px-6">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex flex-1 flex-col gap-4 lg:flex-row lg:items-center">
+              <label className="flex h-12 flex-1 items-center gap-3 rounded-2xl border border-slate-200 bg-[#f8fafc] px-4">
+                <Search className="h-4 w-4 text-slate-400" />
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search by case number, petitioner, department..."
+                  className="h-full w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+                />
+                <span className="hidden rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-400 sm:inline-flex">
+                  ⌘K
+                </span>
+              </label>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <button className="relative inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50">
+                <Bell className="h-4 w-4" />
+                <span className="absolute right-2 top-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-semibold text-white">
+                  6
+                </span>
+              </button>
+              <button className="inline-flex h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-slate-500 transition hover:bg-slate-50">
+                <Moon className="h-4 w-4" />
+                <SunMedium className="h-4 w-4" />
+              </button>
+              <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#5c49d6] text-sm font-semibold text-white">
+                  {initials(user?.name ?? "User")}
+                </div>
+                <div className="leading-tight">
+                  <p className="text-sm font-semibold text-slate-900">{user?.name ?? "NyayaSetu User"}</p>
+                  <p className="text-xs text-slate-500">{user?.designation ?? user?.role ?? "Officer"}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </header>
+
         {error ? (
-          <div className="mt-5 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <div className="mt-4 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             Could not load dashboard data: {error}
           </div>
         ) : null}
 
-        <HeroPanel
-          caseDetail={seed.caseDetail}
-          caseItem={seed.caseItem}
-          confidence={confidence}
-          totalFields={totalFields}
-          verifiedFields={verifiedFields}
-        />
+        <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <section className="space-y-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <h1 className="text-[34px] font-semibold tracking-tight text-slate-950">Dashboard</h1>
+                <p className="mt-2 text-[15px] text-slate-500">
+                  Monitor court judgment compliance and department actions
+                </p>
+              </div>
 
-        <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.95fr)_340px]">
-          <SurfaceCard className="overflow-hidden p-0">
-            <div className="border-b border-slate-200 px-5 pt-4">
-              <div className="flex flex-wrap items-center gap-6 text-sm font-medium text-slate-500">
-                {TAB_OPTIONS.map((tab) => (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setActiveTab(tab)}
-                    className={cn(
-                      "border-b-2 pb-3 transition",
-                      activeTab === tab
-                        ? "border-indigo-500 text-indigo-700"
-                        : "border-transparent text-slate-500 hover:text-slate-700",
-                    )}
-                  >
-                    {tab}
-                    {tab === "Directive Blocks" ? (
-                      <span className="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-600">
-                        {seed.caseDetail?.directives.length ?? 0}
-                      </span>
-                    ) : null}
-                  </button>
-                ))}
+              <div className="flex flex-wrap items-center gap-3">
+                <FilterSelect
+                  value={department || "All Departments"}
+                  onChange={(value) => setDepartment(value === "All Departments" ? "" : value)}
+                  options={["All Departments", ...(overview?.department_options.map((item) => item.name) ?? [])]}
+                />
+                <FilterSelect
+                  value={PERIOD_OPTIONS.find((item) => item.value === periodDays)?.label ?? "This Month"}
+                  onChange={(value) => {
+                    const match = PERIOD_OPTIONS.find((item) => item.label === value);
+                    setPeriodDays(match?.value ?? 30);
+                  }}
+                  options={PERIOD_OPTIONS.map((item) => item.label)}
+                />
               </div>
             </div>
 
-            <div className="p-4">
-              {!hasCase ? (
-                <EmptyPanel
-                  title="No case loaded yet"
-                  detail="Upload or verify a case to populate the review workspace on the dashboard."
-                />
-              ) : activeTab === "PDF Viewer" ? (
-                <PdfCanvas
-                  caseNumber={seed.caseItem?.case_number ?? ""}
-                  court={seed.caseItem?.court ?? ""}
-                  petitioners={seed.caseItem?.petitioners ?? ""}
-                  respondents={seed.caseDetail?.respondents ?? ""}
-                  orderDate={formatCardDate(seed.caseItem?.judgment_date)}
-                  pages={seed.caseDetail?.page_count ?? 0}
-                  directives={directiveCards}
-                />
-              ) : activeTab === "Extracted Text" ? (
-                <ExtractedTextPane
-                  directives={
-                    seed.caseDetail?.directives.map(
-                      (directive) => directive.text,
-                    ) ?? []
-                  }
-                />
-              ) : (
-                <DirectiveBlockPane
-                  directives={seed.caseDetail?.directives ?? []}
-                />
-              )}
-            </div>
-          </SurfaceCard>
-
-          <SurfaceCard className="p-4">
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <h2 className="text-[22px] font-semibold text-slate-900">
-                  Extracted Fields
-                </h2>
-                <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-semibold text-indigo-700">
-                  Review Mode
-                </span>
-              </div>
-            </div>
-
-            {!hasCase ? (
-              <EmptyPanel
-                title="No extracted fields available"
-                detail="Once a judgment is ingested, verified fields and directives will appear here."
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+              <MetricCard
+                title="Total Cases"
+                value={metrics?.total_cases ?? 0}
+                note={metrics ? `Across ${metrics.departments} departments` : "Loading"}
+                tone="indigo"
+                icon={FileText}
               />
-            ) : (
-              <div className="space-y-3">
-                <FieldCard
-                  label="Case Number"
-                  value={seed.caseItem?.case_number ?? "-"}
-                  verified
-                  score={98}
-                />
-                <FieldCard
-                  label="Parties"
-                  value={seed.caseItem?.petitioners ?? "-"}
-                  verified
-                  score={92}
-                />
-                <FieldCard
-                  label="Court"
-                  value={seed.caseItem?.court ?? "-"}
-                  verified
-                  score={96}
-                />
+              <MetricCard
+                title="Verified"
+                value={metrics?.verified ?? 0}
+                note={metrics ? percentage(metrics.verified, totalCases) : "Loading"}
+                tone="emerald"
+                icon={CheckCircle2}
+              />
+              <MetricCard
+                title="Pending Review"
+                value={metrics?.pending_review ?? 0}
+                note={metrics?.pending_review ? `${metrics.pending_review} awaiting review` : "No backlog"}
+                tone="amber"
+                icon={Clock3}
+              />
+              <MetricCard
+                title="Overdue"
+                value={metrics?.overdue ?? 0}
+                note={metrics?.overdue ? "Needs attention" : "No overdue items"}
+                tone="rose"
+                icon={CalendarDays}
+              />
+              <MetricCard
+                title="Departments"
+                value={metrics?.departments ?? 0}
+                note={department ? "Filtered view" : "Active scope"}
+                tone="violet"
+                icon={FileSearch}
+              />
+            </div>
 
-                <div className="grid gap-3 md:grid-cols-2">
-                  <FieldCard
-                    label="Order Date"
-                    value={formatCardDate(seed.caseItem?.judgment_date) || "-"}
-                    verified
-                  />
-                  <FieldCard
-                    label="Received Date"
-                    value={formatCardDate(seed.caseItem?.filed_at) || "-"}
-                    verified
-                  />
+            <div className="grid gap-5 2xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+              <Panel title="Case Status Overview">
+                <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
+                  <div className="h-[280px]">
+                    {overview?.status_overview?.some((item) => item.value > 0) ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={overview.status_overview}
+                            innerRadius={76}
+                            outerRadius={104}
+                            paddingAngle={2}
+                            dataKey="value"
+                            stroke="none"
+                          >
+                            {overview.status_overview.map((item) => (
+                              <Cell key={item.label} fill={item.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <EmptyState text="No case status data available yet." />
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
+                    {(overview?.status_overview ?? []).map((item) => (
+                      <LegendRow key={item.label} item={item} total={totalCases} />
+                    ))}
+                  </div>
                 </div>
+              </Panel>
 
-                {(directiveCards.length > 0
-                  ? directiveCards
-                  : [primaryDirective].filter(Boolean)
-                ).map((directive, index) =>
-                  directive ? (
-                    <DirectiveReviewCard
-                      key={directive.id}
-                      directive={directive.text}
-                      department={directive.department}
-                      dueDate={formatCardDate(directive.deadline) || "Not set"}
-                      actionType={directive.action_type}
-                      score={index === 0 ? 95 : 93}
-                    />
-                  ) : null,
+              <Panel title="Trend (Last 30 Days)">
+                <div className="h-[280px]">
+                  {overview?.trend?.length ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={overview.trend}>
+                        <Tooltip />
+                        <Area type="monotone" dataKey="ingested" stroke="#5957ff" fill="url(#ingestedFill)" strokeWidth={2.5} />
+                        <Area type="monotone" dataKey="verified" stroke="#35c88a" fill="url(#verifiedFill)" strokeWidth={2.5} />
+                        <Area type="monotone" dataKey="overdue" stroke="#ff6767" fill="url(#overdueFill)" strokeWidth={2.5} />
+                        <defs>
+                          <linearGradient id="ingestedFill" x1="0" x2="0" y1="0" y2="1">
+                            <stop offset="5%" stopColor="#5957ff" stopOpacity={0.25} />
+                            <stop offset="95%" stopColor="#5957ff" stopOpacity={0.04} />
+                          </linearGradient>
+                          <linearGradient id="verifiedFill" x1="0" x2="0" y1="0" y2="1">
+                            <stop offset="5%" stopColor="#35c88a" stopOpacity={0.22} />
+                            <stop offset="95%" stopColor="#35c88a" stopOpacity={0.04} />
+                          </linearGradient>
+                          <linearGradient id="overdueFill" x1="0" x2="0" y1="0" y2="1">
+                            <stop offset="5%" stopColor="#ff6767" stopOpacity={0.22} />
+                            <stop offset="95%" stopColor="#ff6767" stopOpacity={0.04} />
+                          </linearGradient>
+                        </defs>
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <EmptyState text="No trend data available for this period." />
+                  )}
+                </div>
+              </Panel>
+            </div>
+
+            <div className="grid gap-5 2xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.8fr)]">
+              <Panel title="Recent Cases" actionLabel="View all">
+                <div className="overflow-hidden rounded-2xl border border-slate-100">
+                  <div className="hidden grid-cols-[1.05fr_1.35fr_0.95fr_0.7fr_0.7fr] bg-slate-50 px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 md:grid">
+                    <span>Case Number</span>
+                    <span>Petitioner</span>
+                    <span>Department</span>
+                    <span>Status</span>
+                    <span>Updated</span>
+                  </div>
+                  <div className="divide-y divide-slate-100 bg-white">
+                    {loading ? (
+                      <div className="px-5 py-10 text-sm text-slate-400">Loading cases...</div>
+                    ) : filteredCases.length === 0 ? (
+                      <div className="px-5 py-10 text-sm text-slate-400">No recent cases found.</div>
+                    ) : (
+                      filteredCases.map((item) => <RecentCaseRow key={item.id} item={item} />)
+                    )}
+                  </div>
+                </div>
+              </Panel>
+
+              <Panel title="Top Departments">
+                <div className="space-y-5">
+                  {(overview?.top_departments ?? []).length === 0 ? (
+                    <EmptyState text="No department activity available yet." />
+                  ) : (
+                    overview?.top_departments.map((item, index) => (
+                      <TopDepartmentRow
+                        key={item.department}
+                        item={item}
+                        max={overview.top_departments[0]?.count ?? item.count}
+                        tone={["indigo", "sky", "emerald", "amber", "violet"][index % 5] as TopDepartmentTone}
+                      />
+                    ))
+                  )}
+                </div>
+              </Panel>
+            </div>
+          </section>
+
+          <aside className="space-y-5">
+            <Panel title="Upcoming Deadlines" actionLabel="View all">
+              <div className="space-y-4">
+                {(overview?.upcoming_deadlines ?? []).length === 0 ? (
+                  <EmptyState text="No upcoming deadlines for this filter." />
+                ) : (
+                  overview?.upcoming_deadlines.map((item) => <DeadlineRow key={item.case_id + item.title} item={item} />)
                 )}
-
-                <div className="grid gap-3 md:grid-cols-2">
-                  <FieldCard
-                    label="Action Type"
-                    value={primaryDirective?.action_type ?? "-"}
-                    verified
-                  />
-                  <FieldCard
-                    label="Appeal Limitation"
-                    value={
-                      primaryDirective?.limitation_days
-                        ? `${primaryDirective.limitation_days} days remaining`
-                        : "Not available"
-                    }
-                    status={
-                      primaryDirective?.limitation_days ? "Review" : "Pending"
-                    }
-                  />
-                </div>
               </div>
-            )}
-          </SurfaceCard>
+            </Panel>
 
-          <div className="space-y-5">
-            <SidebarPanel title="Action Plan Summary">
-              <div className="grid grid-cols-2 gap-3">
-                <MiniStat
-                  label="Total Directions"
-                  value={seed.caseDetail?.directives.length ?? 0}
-                />
-                <MiniStat label="To Departments" value={departmentCount} />
-                <MiniStat
-                  label="Comply"
-                  value={
-                    seed.actionPlans.filter(
-                      (plan) => plan.action_type === "COMPLY",
-                    ).length
-                  }
-                />
-                <MiniStat
-                  label="Appeal"
-                  value={
-                    seed.actionPlans.filter(
-                      (plan) => plan.action_type === "APPEAL",
-                    ).length
-                  }
-                />
-                <MiniStat
-                  label="Inform"
-                  value={
-                    seed.actionPlans.filter(
-                      (plan) => plan.action_type === "INFORM",
-                    ).length
-                  }
-                />
-                <MiniStat
-                  label="Monitor"
-                  value={
-                    seed.actionPlans.filter(
-                      (plan) => plan.action_type === "MONITOR",
-                    ).length
-                  }
-                />
+            <Panel title="Recent Activity">
+              <div className="space-y-5">
+                {(overview?.recent_activity ?? []).length === 0 ? (
+                  <EmptyState text="No recent backend activity available." />
+                ) : (
+                  overview?.recent_activity.map((item, index) => <ActivityRow key={item.id} item={item} isLast={index === (overview.recent_activity.length - 1)} />)
+                )}
               </div>
-            </SidebarPanel>
-
-            <SidebarPanel title="Deadlines" actionLabel="View Calendar">
-              {deadlineCards.length === 0 ? (
-                <EmptyPanel
-                  title="No active deadlines"
-                  detail="Upcoming directive due dates will appear here."
-                  compact
-                />
-              ) : (
-                <div className="space-y-3">
-                  {deadlineCards.map((item, index) => (
-                    <DeadlineCard
-                      key={`${item.case_id}-${index}`}
-                      department={item.department}
-                      title={
-                        item.action_type ??
-                        (index === 0
-                          ? "Speaking Order"
-                          : "Compliance Affidavit")
-                      }
-                      deadline={item.deadline}
-                    />
-                  ))}
-                </div>
-              )}
-            </SidebarPanel>
-
-            <SidebarPanel title="Audit Trail" actionLabel="View All">
-              {timelineItems.length === 0 ? (
-                <EmptyPanel
-                  title="No activity yet"
-                  detail="Action plan events will build a live audit timeline here."
-                  compact
-                />
-              ) : (
-                <div className="space-y-4">
-                  {timelineItems.map((item, index) => (
-                    <AuditItem key={`${item.title}-${index}`} {...item} />
-                  ))}
-                </div>
-              )}
-            </SidebarPanel>
-
-            <SidebarPanel title="Export">
-              <div className="space-y-3">
-                <ActionButton
-                  label="Export Verified Action Plan"
-                  icon={Download}
-                  primary={false}
-                  disabled={!hasCase}
-                />
-                <ActionButton
-                  label="Export PDF"
-                  icon={Download}
-                  primary={false}
-                  disabled={!hasCase}
-                />
-              </div>
-            </SidebarPanel>
-          </div>
-        </section>
-
-        <section className="mt-5 grid gap-4 md:grid-cols-4">
-          <MetricStrip
-            label="Pending Review"
-            value={counts.PENDING_REVIEW ?? 0}
-            tone="amber"
-          />
-          <MetricStrip
-            label="Verified"
-            value={counts.VERIFIED ?? 0}
-            tone="emerald"
-          />
-          <MetricStrip
-            label="Actioned"
-            value={counts.ACTIONED ?? 0}
-            tone="blue"
-          />
-          <MetricStrip
-            label="Appealed"
-            value={counts.APPEALED ?? 0}
-            tone="violet"
-          />
-        </section>
+            </Panel>
+          </aside>
+        </div>
       </div>
     </main>
   );
 }
 
-function HeroPanel({
-  caseDetail,
-  caseItem,
-  confidence,
-  totalFields,
-  verifiedFields,
-}: {
-  caseDetail: CaseDetail | null;
-  caseItem: CaseListItem | null;
-  confidence: number;
-  totalFields: number;
-  verifiedFields: number;
-}) {
-  return (
-    <div className="rounded-[26px] border border-slate-200 bg-white px-6 py-6 shadow-[0_20px_48px_-36px_rgba(15,23,42,0.4)]">
-      <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-[30px] font-semibold tracking-tight text-slate-950 md:text-[38px]">
-              {caseItem?.case_number ?? "No active case"}
-            </h1>
-            <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-semibold text-indigo-700">
-              {caseItem?.court ?? "Awaiting case assignment"}
-            </span>
-          </div>
-          <p className="mt-3 max-w-[720px] text-[18px] text-slate-700 md:text-[22px]">
-            {caseItem?.petitioners ??
-              "Choose a case from the verified queue to populate this dashboard."}
-          </p>
-          <div className="mt-4 flex flex-wrap items-center gap-5 text-sm text-slate-500">
-            <MetaPill
-              icon={CalendarDays}
-              label={`Order Date: ${formatCardDate(caseItem?.judgment_date) || "Not available"}`}
-            />
-            <MetaPill
-              icon={Clock3}
-              label={`Received: ${formatCardDate(caseItem?.filed_at) || "Not available"}`}
-            />
-            <MetaPill
-              icon={FileText}
-              label={`Pages: ${caseDetail?.page_count ?? 0}`}
-            />
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-3 lg:grid lg:grid-cols-2 xl:min-w-[470px]">
-          <CompactProgressCard
-            title="Overall Confidence"
-            value={confidence > 0 ? `${confidence}%` : "—"}
-            statusLabel={confidence > 0 ? "Good" : "Pending"}
-            progress={confidence}
-            accent="emerald"
-          />
-          <CompactProgressCard
-            title="Review Progress"
-            value={totalFields > 0 ? `${verifiedFields} / ${totalFields}` : "—"}
-            statusLabel="Fields Verified"
-            progress={
-              totalFields > 0
-                ? Math.round((verifiedFields / totalFields) * 100)
-                : 0
-            }
-            accent="blue"
-          />
-          <div className="flex items-start gap-3 xl:ml-2">
-            <ActionButton
-              label="Save Draft"
-              icon={FileText}
-              disabled={!caseItem}
-            />
-            <ActionButton
-              label="Submit Verified"
-              icon={CheckCircle2}
-              primary
-              disabled={!caseItem}
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SurfaceCard({
-  children,
-  className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "rounded-[26px] border border-slate-200 bg-white shadow-[0_20px_50px_-38px_rgba(15,23,42,0.4)]",
-        className,
-      )}
-    >
-      {children}
-    </div>
-  );
-}
-
-function SidebarPanel({
+function Panel({
   actionLabel,
   children,
   title,
@@ -506,532 +341,231 @@ function SidebarPanel({
   title: string;
 }) {
   return (
-    <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_18px_45px_-36px_rgba(15,23,42,0.35)]">
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-[22px] font-semibold text-slate-900">{title}</h3>
+    <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_18px_48px_-36px_rgba(15,23,42,0.34)] lg:p-6">
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <h2 className="text-[18px] font-semibold text-slate-900 lg:text-[20px]">{title}</h2>
         {actionLabel ? (
-          <button className="text-sm font-semibold text-indigo-600">
-            {actionLabel}
+          <button className="text-sm font-semibold text-indigo-600 transition hover:text-indigo-700">
+            {actionLabel} →
           </button>
         ) : null}
       </div>
       {children}
-    </div>
+    </section>
   );
 }
 
-function CompactProgressCard({
-  accent,
-  progress,
-  statusLabel,
-  title,
+function FilterSelect({
+  onChange,
+  options,
   value,
 }: {
-  accent: "blue" | "emerald";
-  progress: number;
-  statusLabel: string;
-  title: string;
+  onChange: (value: string) => void;
+  options: string[];
   value: string;
 }) {
-  const accentBar = accent === "emerald" ? "bg-emerald-500" : "bg-blue-500";
-  const accentText =
-    accent === "emerald" ? "text-emerald-600" : "text-slate-500";
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-      <p className="text-xs font-medium text-slate-500">{title}</p>
-      <div className="mt-2 flex items-end gap-2">
-        <span className="text-[34px] font-semibold text-slate-950">
-          {value}
-        </span>
-        <span className={cn("pb-2 text-xs font-semibold", accentText)}>
-          {statusLabel}
-        </span>
-      </div>
-      <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
-        <div
-          className={cn("h-full rounded-full", accentBar)}
-          style={{ width: `${Math.max(12, progress)}%` }}
-        />
-      </div>
+    <div className="relative flex h-11 min-w-[160px] items-center rounded-2xl border border-slate-200 bg-white px-4 shadow-sm">
+      <span className="truncate text-sm font-medium text-slate-700">{value}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }
 
-function MetaPill({
+function MetricCard({
   icon: Icon,
-  label,
-}: {
-  icon: typeof CalendarDays;
-  label: string;
-}) {
-  return (
-    <div className="inline-flex items-center gap-2">
-      <Icon className="h-4 w-4 text-slate-400" />
-      <span>{label}</span>
-    </div>
-  );
-}
-
-function PdfCanvas({
-  caseNumber,
-  court,
-  directives,
-  orderDate,
-  pages,
-  petitioners,
-  respondents,
-}: {
-  caseNumber: string;
-  court: string;
-  directives: NonNullable<CaseDetail["directives"]>;
-  orderDate: string;
-  pages: number;
-  petitioners: string;
-  respondents: string;
-}) {
-  return (
-    <div>
-      <div className="flex items-center justify-between rounded-t-[18px] bg-[#1f2430] px-5 py-3 text-white">
-        <div className="flex items-center gap-4 text-sm">
-          <span className="font-medium">{caseNumber}_Judgment.pdf</span>
-          <span className="text-slate-300">1 / {pages}</span>
-          <span className="text-slate-300">100%</span>
-        </div>
-        <div className="flex items-center gap-3 text-slate-300">
-          <span>−</span>
-          <span>+</span>
-          <span>|</span>
-          <span>⤢</span>
-        </div>
-      </div>
-      <div className="rounded-b-[18px] border border-t-0 border-slate-200 bg-[#f6f7fb] p-4">
-        <div className="relative flex min-h-[420px] gap-4 rounded-[18px] border border-slate-200 bg-white p-5 shadow-inner md:min-h-[560px]">
-          <div className="w-full pr-12">
-            <div className="mx-auto max-w-[560px] space-y-4 font-serif text-[14px] leading-7 text-slate-800 md:text-[15px] md:leading-8">
-              <p className="text-center text-[18px] font-semibold md:text-[22px]">
-                {court || "Court details unavailable"}
-              </p>
-              <p className="text-center">
-                {orderDate
-                  ? `DATED THIS THE ${orderDate.toUpperCase()}`
-                  : "DATED AS PER CASE RECORD"}
-              </p>
-              <p className="text-center font-semibold">PRESENT</p>
-              <p className="text-center">
-                {caseNumber || "Case record unavailable"}
-              </p>
-              <p>Case No. {caseNumber.replace("WP ", "") || "-"}</p>
-              <p>{petitioners || "Petitioners not available"}</p>
-              <p className="text-right italic">...Petitioner</p>
-              <p className="text-center">Versus</p>
-              <p>{respondents || "Respondents not available"}</p>
-              <p className="text-right italic">...Respondents</p>
-              <p className="text-center font-semibold tracking-[0.3em]">
-                ORDER
-              </p>
-              {directives.length === 0 ? (
-                <p>No verified directives available for preview.</p>
-              ) : (
-                directives.map((directive, index) => (
-                  <p key={directive.id}>
-                    {index + 1}.{" "}
-                    <span
-                      className={cn(
-                        "rounded px-1 py-0.5",
-                        index === 0 ? "bg-[#f8e56f]" : "bg-[#b6ed8b]",
-                      )}
-                    >
-                      {directive.text}
-                    </span>
-                  </p>
-                ))
-              )}
-            </div>
-          </div>
-
-          <div className="absolute right-4 top-16 flex flex-col gap-3">
-            {["✦", "☞", "✎", "⬤", "⬤", "⌫", "↺"].map((item, index) => (
-              <button
-                key={`${item}-${index}`}
-                className={cn(
-                  "flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-[#20242d] text-white shadow-sm",
-                  index === 3 && "text-[#f7d942]",
-                  index === 4 && "text-[#79dc6b]",
-                )}
-              >
-                {item}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-4 rounded-[18px] border border-slate-200 bg-white p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <h4 className="text-sm font-semibold text-slate-900">
-              Directive Blocks ({directives.length})
-            </h4>
-            <span className="text-slate-400">✣</span>
-          </div>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7">
-            {directives.map((directive, index) => (
-              <button
-                key={directive.id}
-                className={cn(
-                  "rounded-2xl border px-3 py-3 text-left transition",
-                  index === 0
-                    ? "border-indigo-300 bg-indigo-50 text-indigo-700"
-                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
-                )}
-              >
-                <p className="text-sm font-semibold">Block {index + 1}</p>
-                <p className="mt-1 text-xs">
-                  Pg {directive.page_number ?? index + 1}
-                </p>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ExtractedTextPane({ directives }: { directives: string[] }) {
-  return (
-    <div className="rounded-[20px] border border-slate-200 bg-[#fafbff] p-5">
-      <h3 className="text-lg font-semibold text-slate-900">
-        Extracted Judgment Text
-      </h3>
-      {directives.length === 0 ? (
-        <p className="mt-4 text-sm text-slate-500">
-          No extracted directives available for this case yet.
-        </p>
-      ) : (
-        <div className="mt-4 space-y-4 text-sm leading-7 text-slate-600">
-          {directives.map((item, index) => (
-            <p key={`${item.slice(0, 18)}-${index}`}>
-              {index + 1}. {item}
-            </p>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function DirectiveBlockPane({
-  directives,
-}: {
-  directives: CaseDetail["directives"];
-}) {
-  return directives.length === 0 ? (
-    <EmptyPanel
-      title="No directive blocks yet"
-      detail="Verified directive blocks will appear here after case review."
-    />
-  ) : (
-    <div className="space-y-3">
-      {directives.map((directive, index) => (
-        <div
-          key={directive.id}
-          className="rounded-[20px] border border-slate-200 bg-[#fafbff] p-4"
-        >
-          <div className="mb-2 flex items-center justify-between">
-            <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
-              Direction {index + 1}
-            </span>
-            <span className="text-sm font-semibold text-slate-500">
-              {Math.round(directive.confidence_score * 100)}%
-            </span>
-          </div>
-          <p className="text-sm leading-6 text-slate-700">{directive.text}</p>
-          <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
-            <span className="rounded-full border border-slate-200 px-3 py-1">
-              {directive.department}
-            </span>
-            <span className="rounded-full border border-slate-200 px-3 py-1">
-              {directive.action_type}
-            </span>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function FieldCard({
-  label,
-  score,
-  status,
-  value,
-  verified,
-}: {
-  label: string;
-  score?: number;
-  status?: string;
-  value: string;
-  verified?: boolean;
-}) {
-  return (
-    <div className="rounded-[18px] border border-slate-200 bg-white px-4 py-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-        {label}
-      </p>
-      <div className="mt-2 flex items-start justify-between gap-4">
-        <p className="max-w-[80%] text-sm leading-6 text-slate-800">
-          {value || "-"}
-        </p>
-        <div className="flex items-center gap-3">
-          <StatusBadge status={status ?? (verified ? "Verified" : "Draft")} />
-          {typeof score === "number" ? (
-            <span className="text-xs font-semibold text-slate-500">
-              {score}%
-            </span>
-          ) : null}
-          <button className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50">
-            Edit
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DirectiveReviewCard({
-  actionType,
-  department,
-  directive,
-  dueDate,
-  score,
-}: {
-  actionType: string;
-  department: string;
-  directive: string;
-  dueDate: string;
-  score: number;
-}) {
-  return (
-    <div className="rounded-[20px] border border-slate-200 bg-white p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
-          Direction 1 (Action)
-        </span>
-        <div className="flex items-center gap-3">
-          <StatusBadge status="Verified" />
-          <span className="text-xs font-semibold text-slate-500">{score}%</span>
-          <button className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50">
-            Edit
-          </button>
-        </div>
-      </div>
-      <p className="text-sm leading-6 text-slate-800">{directive}</p>
-      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        <FieldCard label="Responsible Department" value={department} verified />
-        <FieldCard label="Timeline" value={dueDate} verified />
-        <FieldCard label="Action Type" value={actionType} verified />
-      </div>
-    </div>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const tone =
-    status === "Verified"
-      ? "bg-emerald-50 text-emerald-600"
-      : status === "Review"
-        ? "bg-amber-50 text-amber-600"
-        : "bg-slate-100 text-slate-500";
-
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold",
-        tone,
-      )}
-    >
-      <span className="h-1.5 w-1.5 rounded-full bg-current" />
-      {status}
-    </span>
-  );
-}
-
-function MiniStat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-[18px] border border-slate-200 bg-white px-4 py-4 text-center">
-      <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p className="mt-2 text-[30px] font-semibold text-slate-950">{value}</p>
-    </div>
-  );
-}
-
-function EmptyPanel({
-  compact,
-  detail,
+  note,
   title,
-}: {
-  compact?: boolean;
-  detail: string;
-  title: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "rounded-[18px] border border-dashed border-slate-200 bg-slate-50/80 text-slate-500",
-        compact ? "px-4 py-5" : "px-5 py-8",
-      )}
-    >
-      <p className="text-sm font-semibold text-slate-700">{title}</p>
-      <p className="mt-2 text-sm leading-6">{detail}</p>
-    </div>
-  );
-}
-
-function DeadlineCard({
-  deadline,
-  department,
-  title,
-}: {
-  deadline: string;
-  department: string;
-  title: string;
-}) {
-  return (
-    <div className="rounded-[18px] border border-slate-200 bg-white px-4 py-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-            <p className="text-sm font-semibold text-slate-900">
-              {department} - {title}
-            </p>
-          </div>
-          <p className="mt-2 text-xs text-slate-500">
-            Due: {formatDate(deadline)}
-          </p>
-        </div>
-        <div className="text-right">
-          <p className="text-sm font-semibold text-slate-700">
-            in {daysFromNow(deadline)} days
-          </p>
-          <p className="mt-1 text-xs font-semibold text-emerald-600">
-            On Track
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AuditItem({
-  actor,
-  detail,
-  title,
-  when,
-}: {
-  actor: string;
-  detail: string;
-  title: string;
-  when: string;
-}) {
-  return (
-    <div className="relative pl-6">
-      <span className="absolute left-0 top-1 h-3 w-3 rounded-full bg-indigo-500" />
-      <span className="absolute left-[5px] top-4 h-[calc(100%+4px)] w-px bg-slate-200 last:hidden" />
-      <p className="text-sm font-semibold text-slate-900">{title}</p>
-      <p className="mt-1 text-sm text-slate-600">{actor}</p>
-      <p className="mt-1 text-sm text-slate-500">{detail}</p>
-      <p className="mt-1 text-xs text-slate-400">{when}</p>
-    </div>
-  );
-}
-
-function ActionButton({
-  disabled,
-  icon: Icon,
-  label,
-  primary,
-}: {
-  disabled?: boolean;
-  icon: typeof FileText;
-  label: string;
-  primary?: boolean;
-}) {
-  return (
-    <button
-      disabled={disabled}
-      className={cn(
-        "inline-flex whitespace-nowrap h-12 items-center gap-2 rounded-xl px-5 text-sm font-semibold transition",
-        primary
-          ? "bg-[#5a43d5] text-white shadow-[0_14px_34px_-18px_rgba(90,67,213,0.85)] hover:brightness-105"
-          : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
-        disabled && "cursor-not-allowed opacity-45",
-      )}
-    >
-      <Icon className="h-4 w-4" />
-      {label}
-    </button>
-  );
-}
-
-function MetricStrip({
-  label,
   tone,
   value,
 }: {
-  label: string;
-  tone: "amber" | "blue" | "emerald" | "violet";
+  icon: typeof FileText;
+  note: string;
+  title: string;
+  tone: "amber" | "emerald" | "indigo" | "rose" | "violet";
   value: number;
 }) {
   const tones = {
-    amber: "bg-amber-50 text-amber-700",
-    emerald: "bg-emerald-50 text-emerald-700",
-    blue: "bg-blue-50 text-blue-700",
-    violet: "bg-violet-50 text-violet-700",
+    indigo: "bg-indigo-50 text-indigo-600",
+    emerald: "bg-emerald-50 text-emerald-600",
+    amber: "bg-amber-50 text-amber-600",
+    rose: "bg-rose-50 text-rose-600",
+    violet: "bg-violet-50 text-violet-600",
   };
 
   return (
-    <div className="rounded-[22px] border border-slate-200 bg-white px-5 py-4 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.4)]">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-slate-500">{label}</p>
-          <p className="mt-2 text-[32px] font-semibold text-slate-950">
-            {value}
-          </p>
+    <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_12px_36px_-28px_rgba(15,23,42,0.3)]">
+      <div className="flex items-start gap-4">
+        <div className={cn("flex h-12 w-12 items-center justify-center rounded-2xl", tones[tone])}>
+          <Icon className="h-5 w-5" />
         </div>
-        <span
-          className={cn(
-            "rounded-full px-3 py-1 text-xs font-semibold",
-            tones[tone],
-          )}
-        >
-          {label}
-        </span>
+        <div>
+          <p className="text-sm font-medium text-slate-500">{title}</p>
+          <p className="mt-1 text-[42px] font-semibold leading-none text-slate-950">{value}</p>
+          <p className="mt-3 text-sm text-slate-500">{note}</p>
+        </div>
       </div>
     </div>
   );
 }
 
-function buildTimeline(actionPlans: ActionPlan[]) {
-  return actionPlans
-    .flatMap((plan) =>
-      plan.timeline.map((entry) => ({
-        title: entry.message,
-        actor: `${entry.actor_label}${plan.assigned_department ? ` (${plan.assigned_department})` : ""}`,
-        detail: plan.directive_text,
-        when: new Date(entry.created_at).toLocaleString("en-GB", {
-          day: "numeric",
-          month: "short",
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-        createdAt: new Date(entry.created_at).getTime(),
-      })),
-    )
-    .sort((a, b) => b.createdAt - a.createdAt);
+function LegendRow({ item, total }: { item: DashboardStatusItem; total: number }) {
+  return (
+    <div className="flex items-center justify-between rounded-2xl border border-slate-100 px-4 py-3">
+      <div className="flex items-center gap-3">
+        <span className="h-3 w-3 rounded-full" style={{ backgroundColor: item.color }} />
+        <span className="text-sm font-medium text-slate-700">{item.label}</span>
+      </div>
+      <div className="flex items-center gap-4">
+        <span className="text-lg font-semibold text-slate-950">{item.value}</span>
+        <span className="min-w-[42px] text-right text-sm text-slate-500">{percentage(item.value, total)}</span>
+      </div>
+    </div>
+  );
 }
 
-function formatCardDate(value?: string | null) {
-  if (!value) return "";
+function RecentCaseRow({ item }: { item: DashboardRecentCase }) {
+  return (
+    <div className="grid gap-3 px-5 py-4 md:grid-cols-[1.05fr_1.35fr_0.95fr_0.7fr_0.7fr] md:items-center">
+      <div className="text-sm font-semibold text-slate-900">{item.case_number}</div>
+      <div className="text-sm text-slate-600">{item.petitioner}</div>
+      <div className="text-sm text-slate-600">{item.department}</div>
+      <div>
+        <span className={cn("inline-flex rounded-full px-3 py-1 text-xs font-semibold", statusPillTone(item.status))}>
+          {humanizeStatus(item.status)}
+        </span>
+      </div>
+      <div className="text-sm text-slate-500">{timeAgo(item.updated_at)}</div>
+    </div>
+  );
+}
+
+type TopDepartmentTone = "amber" | "emerald" | "indigo" | "sky" | "violet";
+
+function TopDepartmentRow({
+  item,
+  max,
+  tone,
+}: {
+  item: DashboardTopDepartment;
+  max: number;
+  tone: TopDepartmentTone;
+}) {
+  const tones = {
+    indigo: "bg-indigo-500",
+    sky: "bg-sky-500",
+    emerald: "bg-emerald-500",
+    amber: "bg-amber-500",
+    violet: "bg-violet-500",
+  };
+
+  return (
+    <div className="flex items-center gap-4">
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-50 text-slate-500">
+          <FileText className="h-4 w-4" />
+        </div>
+        <span className="truncate text-sm font-semibold text-slate-800">{item.department}</span>
+      </div>
+      <div className="w-[120px] overflow-hidden rounded-full bg-slate-100">
+        <div className={cn("h-2 rounded-full", tones[tone])} style={{ width: `${Math.max(12, (item.count / Math.max(1, max)) * 100)}%` }} />
+      </div>
+      <span className="w-10 text-right text-sm font-semibold text-slate-900">{item.count}</span>
+    </div>
+  );
+}
+
+function DeadlineRow({ item }: { item: DashboardDeadline }) {
+  const badge = deadlineBadge(item.days_left, item.status);
+  return (
+    <div className="rounded-[22px] border border-slate-100 bg-white px-4 py-4 shadow-[0_12px_34px_-28px_rgba(15,23,42,0.26)]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-slate-900">{item.case_number}</p>
+          <p className="mt-1 text-sm text-slate-700">{humanizeAction(item.title)}</p>
+          <p className="mt-3 text-xs text-slate-500">{item.department}</p>
+        </div>
+        <span className={cn("inline-flex rounded-full px-3 py-1 text-xs font-semibold", badge.tone)}>
+          {badge.label}
+        </span>
+      </div>
+      <div className="mt-4 flex items-center justify-between text-sm text-slate-500">
+        <span>{item.deadline ? formatLongDate(item.deadline) : "No deadline"}</span>
+        <span>{item.days_left !== null ? `${item.days_left} days` : "—"}</span>
+      </div>
+    </div>
+  );
+}
+
+function ActivityRow({ isLast, item }: { isLast: boolean; item: DashboardActivity }) {
+  return (
+    <div className="relative pl-8">
+      <span className="absolute left-0 top-1.5 h-4 w-4 rounded-full bg-[#5957ff]" />
+      {!isLast ? <span className="absolute left-[7px] top-6 h-[calc(100%+14px)] w-px bg-slate-200" /> : null}
+      <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+      <p className="mt-2 text-sm text-slate-600">{item.subtitle}</p>
+      <p className="mt-2 text-xs text-slate-400">{timeAgo(item.created_at)}</p>
+    </div>
+  );
+}
+
+function EmptyState({ text }: { text: string }) {
+  return (
+    <div className="flex min-h-[180px] items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 px-4 text-center text-sm text-slate-500">
+      {text}
+    </div>
+  );
+}
+
+function percentage(value: number, total: number) {
+  if (!total) return "0%";
+  return `${Math.round((value / total) * 100)}%`;
+}
+
+function humanizeStatus(status: string) {
+  return status
+    .toLowerCase()
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function humanizeAction(value: string) {
+  return value.toLowerCase().split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+}
+
+function statusPillTone(status: string) {
+  if (status === "VERIFIED") return "bg-emerald-50 text-emerald-600";
+  if (status === "PENDING_REVIEW") return "bg-amber-50 text-amber-600";
+  if (status === "ACTIONED") return "bg-blue-50 text-blue-600";
+  if (status === "APPEALED") return "bg-violet-50 text-violet-600";
+  return "bg-slate-100 text-slate-500";
+}
+
+function deadlineBadge(daysLeft: number | null, status: string) {
+  if (status === "OVERDUE" || (daysLeft !== null && daysLeft < 0)) {
+    return { label: "Overdue", tone: "bg-rose-50 text-rose-600" };
+  }
+  if (daysLeft !== null && daysLeft <= 3) {
+    return { label: "Due in 3d", tone: "bg-amber-50 text-amber-600" };
+  }
+  if (daysLeft !== null && daysLeft <= 7) {
+    return { label: "Due in 7d", tone: "bg-indigo-50 text-indigo-600" };
+  }
+  return { label: "Upcoming", tone: "bg-slate-100 text-slate-500" };
+}
+
+function formatLongDate(value: string) {
   return new Date(value).toLocaleDateString("en-GB", {
     day: "numeric",
     month: "short",
@@ -1039,9 +573,13 @@ function formatCardDate(value?: string | null) {
   });
 }
 
-function daysFromNow(value: string) {
-  const diff = new Date(value).getTime() - Date.now();
-  return Math.max(1, Math.ceil(diff / 86400000));
+function timeAgo(value: string) {
+  const diff = Date.now() - new Date(value).getTime();
+  const minutes = Math.max(1, Math.floor(diff / 60000));
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  return `${Math.floor(hours / 24)} day ago`;
 }
 
 function initials(name: string) {

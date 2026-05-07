@@ -199,6 +199,13 @@ export const api = {
       };
     },
   },
+
+  dashboard: {
+    overview: (params?: { department?: string; period_days?: number }) => {
+      const q = new URLSearchParams(params as Record<string, string>).toString();
+      return request<DashboardOverview>(`/dashboard/overview${q ? `?${q}` : ""}`);
+    },
+  },
 };
 
 function getFilenameFromHeaders(headers: Headers) {
@@ -466,4 +473,73 @@ export interface ReportExportRequest {
   start_date?: string;
   end_date?: string;
   department?: string;
+}
+
+export interface DashboardMetricSet {
+  total_cases: number;
+  verified: number;
+  pending_review: number;
+  overdue: number;
+  departments: number;
+}
+
+export interface DashboardStatusItem {
+  label: string;
+  value: number;
+  color: string;
+}
+
+export interface DashboardTrendPoint {
+  label: string;
+  ingested: number;
+  verified: number;
+  overdue: number;
+}
+
+export interface DashboardRecentCase {
+  id: string;
+  case_number: string;
+  petitioner: string;
+  department: string;
+  status: string;
+  updated_at: string;
+}
+
+export interface DashboardTopDepartment {
+  department: string;
+  count: number;
+}
+
+export interface DashboardDeadline {
+  case_id: string;
+  case_number: string;
+  title: string;
+  department: string;
+  deadline: string | null;
+  days_left: number | null;
+  status: string;
+}
+
+export interface DashboardActivity {
+  id: string;
+  title: string;
+  subtitle: string;
+  created_at: string;
+  event: string;
+}
+
+export interface DashboardDepartmentOption {
+  name: string;
+  code: string;
+}
+
+export interface DashboardOverview {
+  metrics: DashboardMetricSet;
+  status_overview: DashboardStatusItem[];
+  trend: DashboardTrendPoint[];
+  recent_cases: DashboardRecentCase[];
+  top_departments: DashboardTopDepartment[];
+  upcoming_deadlines: DashboardDeadline[];
+  recent_activity: DashboardActivity[];
+  department_options: DashboardDepartmentOption[];
 }

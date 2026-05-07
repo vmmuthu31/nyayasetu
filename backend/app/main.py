@@ -7,7 +7,7 @@ from app.core.catalog import seed_departments
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, engine
 from app.models.base import Base
-from app.routers import auth, cases, ingest, review, audit, departments, ccms, admin, action_plans, reports
+from app.routers import auth, cases, ingest, review, audit, departments, ccms, admin, action_plans, reports, dashboard
 
 
 @asynccontextmanager
@@ -66,6 +66,7 @@ app.include_router(ccms.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
 app.include_router(action_plans.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
+app.include_router(dashboard.router, prefix="/api")
 
 
 @app.get("/")
