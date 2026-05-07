@@ -1,190 +1,269 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Calendar, AlertTriangle, Clock, CheckCircle, RefreshCw } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Filter,
+  Loader2,
+} from "lucide-react";
 import { api, StatsResponse } from "@/lib/api";
-import { formatDate, daysUntil, cn } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 type DeadlineItem = StatsResponse["upcoming_deadlines"][number];
+
+const WEEKDAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+
+const EVENT_STYLES: Record<string, string> = {
+  COMPLY: "border-teal-200 bg-teal-50 text-teal-700",
+  APPEAL: "border-violet-200 bg-violet-50 text-violet-700",
+  INFORM: "border-blue-200 bg-blue-50 text-blue-700",
+  MONITOR: "border-orange-200 bg-orange-50 text-orange-700",
+};
 
 export default function ActionCalendarPage() {
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewDate, setViewDate] = useState(() => new Date());
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    api.cases.stats()
+    api.cases
+      .stats()
       .then(setStats)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    void Promise.resolve().then(load);
+  }, [load]);
+
+  const deadlines = useMemo(() => stats?.upcoming_deadlines ?? [], [stats]);
+  const monthCells = useMemo(() => buildMonthCells(viewDate), [viewDate]);
+  const eventsByDay = useMemo(
+    () => groupDeadlinesByDay(deadlines),
+    [deadlines],
+  );
+  const todayKey = toDateKey(new Date());
+  const monthLabel = viewDate.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
+
+  const moveMonth = (amount: number) => {
+    setViewDate(
+      (current) =>
+        new Date(current.getFullYear(), current.getMonth() + amount, 1),
+    );
   };
 
-  useEffect(() => { load(); }, []);
-
-  const deadlines = stats?.upcoming_deadlines ?? [];
-
-  // Group by urgency
-  const overdue = deadlines.filter((d) => { const x = daysUntil(d.deadline); return x !== null && x < 0; });
-  const thisWeek = deadlines.filter((d) => { const x = daysUntil(d.deadline); return x !== null && x >= 0 && x <= 7; });
-  const thisMonth = deadlines.filter((d) => { const x = daysUntil(d.deadline); return x !== null && x > 7 && x <= 30; });
-  const upcoming = deadlines.filter((d) => { const x = daysUntil(d.deadline); return x !== null && x > 30; });
-
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Top bar */}
-      <div className="shrink-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center">
-            <Calendar className="w-5 h-5 text-indigo-600" />
+    <main className="h-full overflow-y-auto bg-white">
+      <div className="mx-auto flex min-h-full w-full max-w-[1040px] flex-col px-8 py-8">
+        <header>
+          <h1 className="text-[28px] font-semibold leading-tight text-slate-950">
+            Action Calendar
+          </h1>
+          <p className="mt-3 text-[15px] text-slate-500">
+            Schedule and track departmental actions and deadlines.
+          </p>
+        </header>
+
+        <div className="mt-9 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setViewDate(new Date())}
+              className="h-11 rounded-md border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-500 shadow-sm transition hover:bg-slate-50"
+            >
+              Today
+            </button>
+            <IconButton label="Previous month" onClick={() => moveMonth(-1)}>
+              <ChevronLeft className="h-5 w-5" />
+            </IconButton>
+            <IconButton label="Next month" onClick={() => moveMonth(1)}>
+              <ChevronRight className="h-5 w-5" />
+            </IconButton>
+            <IconButton label="Jump forward" onClick={() => moveMonth(1)}>
+              <ChevronRight className="h-5 w-5" />
+            </IconButton>
+            <button
+              type="button"
+              className="ml-3 inline-flex h-11 items-center gap-3 rounded-md px-2 text-[20px] font-semibold text-slate-950"
+            >
+              {monthLabel}
+              <ChevronDown className="h-4 w-4 text-slate-300" />
+            </button>
           </div>
-          <div>
-            <h1 className="text-lg font-bold text-slate-900 leading-tight">Action Calendar</h1>
-            <p className="text-slate-500 text-xs">
-              {loading ? "Loading…" : `${deadlines.length} upcoming deadline${deadlines.length !== 1 ? "s" : ""}`}
-            </p>
+
+          <div className="flex items-center gap-4">
+            <div className="grid h-11 grid-cols-3 overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
+              {["Month", "Week", "List"].map((label) => (
+                <button
+                  key={label}
+                  type="button"
+                  className={cn(
+                    "px-5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50",
+                    label === "Month" &&
+                      "border border-indigo-100 text-indigo-600 shadow-sm",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="inline-flex h-11 items-center gap-2 rounded-md border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50"
+            >
+              <Filter className="h-4 w-4" />
+              Filter
+            </button>
           </div>
         </div>
-        <button
-          onClick={load}
-          className="flex items-center gap-1.5 text-sm text-slate-600 border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50"
-        >
-          <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} /> Refresh
-        </button>
-      </div>
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{error}</div>
+          <div className="mt-3 rounded-md border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {error}
+          </div>
         )}
 
-        {loading ? (
-          <div className="flex items-center justify-center py-16 text-slate-400 gap-2">
-            <RefreshCw className="w-5 h-5 animate-spin" /> Loading deadlines…
-          </div>
-        ) : deadlines.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <Calendar className="w-12 h-12 text-slate-200 mb-3" />
-            <p className="text-slate-500 font-medium">No deadlines found</p>
-            <p className="text-slate-400 text-sm mt-1">Deadlines appear here once cases are ingested</p>
-          </div>
-        ) : (
-          <>
-            {/* Summary strip */}
-            <div className="grid grid-cols-4 gap-4">
-              <SummaryChip label="Overdue" count={overdue.length} color="red" icon={AlertTriangle} />
-              <SummaryChip label="This Week" count={thisWeek.length} color="orange" icon={Clock} />
-              <SummaryChip label="This Month" count={thisMonth.length} color="amber" icon={Calendar} />
-              <SummaryChip label="Later" count={upcoming.length} color="emerald" icon={CheckCircle} />
-            </div>
-
-            {/* Groups */}
-            {overdue.length > 0 && (
-              <DeadlineGroup
-                title="Overdue"
-                items={overdue}
-                headerClass="bg-red-50 border-red-200 text-red-800"
-                dotClass="bg-red-500"
-              />
-            )}
-            {thisWeek.length > 0 && (
-              <DeadlineGroup
-                title="Due This Week"
-                items={thisWeek}
-                headerClass="bg-orange-50 border-orange-200 text-orange-800"
-                dotClass="bg-orange-500"
-              />
-            )}
-            {thisMonth.length > 0 && (
-              <DeadlineGroup
-                title="Due This Month"
-                items={thisMonth}
-                headerClass="bg-amber-50 border-amber-200 text-amber-800"
-                dotClass="bg-amber-400"
-              />
-            )}
-            {upcoming.length > 0 && (
-              <DeadlineGroup
-                title="Upcoming (30+ days)"
-                items={upcoming}
-                headerClass="bg-slate-50 border-slate-200 text-slate-700"
-                dotClass="bg-emerald-500"
-              />
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function SummaryChip({
-  label, count, color, icon: Icon,
-}: { label: string; count: number; color: string; icon: React.ElementType }) {
-  const styles: Record<string, string> = {
-    red: "bg-red-50 border-red-200 text-red-700",
-    orange: "bg-orange-50 border-orange-200 text-orange-700",
-    amber: "bg-amber-50 border-amber-200 text-amber-700",
-    emerald: "bg-emerald-50 border-emerald-200 text-emerald-700",
-  };
-  return (
-    <div className={cn("rounded-xl border px-4 py-3 flex items-center gap-3", styles[color])}>
-      <Icon className="w-5 h-5 shrink-0" />
-      <div>
-        <p className="text-2xl font-bold leading-tight">{count}</p>
-        <p className="text-xs font-medium">{label}</p>
-      </div>
-    </div>
-  );
-}
-
-function DeadlineGroup({
-  title, items, headerClass, dotClass,
-}: { title: string; items: DeadlineItem[]; headerClass: string; dotClass: string }) {
-  return (
-    <div className="rounded-xl border border-slate-200 overflow-hidden bg-white shadow-sm">
-      <div className={cn("px-4 py-2.5 border-b text-sm font-semibold", headerClass)}>
-        {title} <span className="ml-2 font-normal opacity-70">({items.length})</span>
-      </div>
-      <div className="divide-y divide-slate-100">
-        {items.map((item, i) => {
-          const days = daysUntil(item.deadline);
-          return (
-            <div key={i} className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors">
-              <div className={cn("w-2 h-2 rounded-full shrink-0", dotClass)} />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium text-slate-800 truncate">{item.department}</p>
-                  {item.action_type && (
-                    <span className={cn(
-                      "shrink-0 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full",
-                      item.action_type === "COMPLY" ? "bg-emerald-100 text-emerald-700" :
-                      item.action_type === "APPEAL" ? "bg-red-100 text-red-700" :
-                      item.action_type === "INFORM" ? "bg-blue-100 text-blue-700" :
-                      "bg-violet-100 text-violet-700"
-                    )}>{item.action_type}</span>
-                  )}
-                </div>
-                <p className="text-xs text-slate-400 truncate">Case: {item.case_number}</p>
-              </div>
-              <div className="text-right shrink-0">
-                <p className="text-xs font-medium text-slate-700">{formatDate(item.deadline)}</p>
-                <p className="text-[10px] text-slate-400">
-                  {days === null ? "—" : days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? "Due today" : `in ${days}d`}
-                </p>
-              </div>
-              <Link
-                href={`/cases/${item.case_id}/review`}
-                className="shrink-0 text-xs font-medium text-indigo-600 hover:text-indigo-800 hover:underline"
+        <section className="mt-3 overflow-hidden rounded-lg border border-slate-200 bg-white">
+          <div className="grid grid-cols-7 border-b border-slate-200">
+            {WEEKDAYS.map((day) => (
+              <div
+                key={day}
+                className="border-r border-slate-200 py-1 text-center text-xs font-bold text-slate-500 last:border-r-0"
               >
-                View →
-              </Link>
+                {day}
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-7">
+            {monthCells.map((cell) => {
+              const dayEvents = eventsByDay.get(cell.key) ?? [];
+              return (
+                <div
+                  key={cell.key}
+                  className="relative min-h-[114px] border-r border-b border-slate-200 bg-white p-3 last:border-r-0"
+                >
+                  <div className="flex justify-center">
+                    <span
+                      className={cn(
+                        "flex h-8 w-8 items-center justify-center rounded-full text-[17px] font-semibold",
+                        cell.inMonth ? "text-slate-700" : "text-slate-300",
+                        cell.key === todayKey &&
+                          "bg-indigo-600 text-white shadow-[0_6px_12px_rgba(79,70,229,0.25)]",
+                      )}
+                    >
+                      {cell.date.getDate()}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 space-y-1.5">
+                    {dayEvents.slice(0, 2).map((event) => (
+                      <Link
+                        key={`${event.case_id}-${event.deadline}-${event.action_type}`}
+                        href={`/cases/${event.case_id}/review`}
+                        className={cn(
+                          "mx-auto flex max-w-[170px] items-center gap-1.5 truncate rounded-md border px-2 py-1 text-xs font-semibold shadow-sm transition hover:brightness-95",
+                          EVENT_STYLES[event.action_type ?? ""] ??
+                            "border-slate-200 bg-slate-50 text-slate-600",
+                        )}
+                      >
+                        <span className="h-2 w-2 shrink-0 rounded-full bg-current opacity-80" />
+                        <span className="truncate">{eventLabel(event)}</span>
+                      </Link>
+                    ))}
+                    {dayEvents.length > 2 && (
+                      <p className="text-center text-[11px] font-semibold text-slate-400">
+                        +{dayEvents.length - 2} more
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {loading && (
+            <div className="flex items-center justify-center gap-2 border-t border-slate-100 py-4 text-sm text-slate-400">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading deadlines
             </div>
-          );
-        })}
+          )}
+        </section>
       </div>
-    </div>
+    </main>
   );
+}
+
+function IconButton({
+  children,
+  label,
+  onClick,
+}: {
+  children: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClick}
+      className="flex h-11 w-11 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:bg-slate-50 hover:text-indigo-600"
+    >
+      {children}
+    </button>
+  );
+}
+
+function buildMonthCells(viewDate: Date) {
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  const firstOfMonth = new Date(year, month, 1);
+  const start = new Date(year, month, 1 - firstOfMonth.getDay());
+
+  return Array.from({ length: 35 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return {
+      date,
+      key: toDateKey(date),
+      inMonth: date.getMonth() === month,
+    };
+  });
+}
+
+function groupDeadlinesByDay(items: DeadlineItem[]) {
+  const grouped = new Map<string, DeadlineItem[]>();
+  for (const item of items) {
+    const key = toDateKey(new Date(item.deadline));
+    const bucket = grouped.get(key) ?? [];
+    bucket.push(item);
+    grouped.set(key, bucket);
+  }
+  return grouped;
+}
+
+function toDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function eventLabel(item: DeadlineItem) {
+  if (item.action_type === "COMPLY") return "Submit Compliance Report";
+  if (item.action_type === "APPEAL") return "File Affidavit";
+  if (item.action_type === "INFORM") return "Progress Update";
+  if (item.action_type === "MONITOR") return "Action Plan Due";
+  return item.department || item.case_number;
 }
