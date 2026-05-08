@@ -1,6 +1,6 @@
 {
   "toggles": {
-    "auto_verify_high_confidence": false,
+    "auto_verify_high_confidence": true,
     "require_notes_on_reject": true,
     "email_on_ingest": true,
     "email_on_deadline": true,
